@@ -109,7 +109,7 @@
     <div id="drop-zone">
         <h3>📁 ここに LINE の DB ファイルまたはフォルダをドロップ</h3>
         <p style="color: #666; font-size: 13px;">
-            <code>Line.sqlite</code> や <code>P_Line.sqlite</code>、またはバックアップフォルダ全体に対応します
+            <code>Line.sqlite</code> や <code>Talk.sqlite</code>、<code>P_Line.sqlite</code> に対応します
         </p>
         <div class="file-select-btns">
             <label class="file-btn">
@@ -297,7 +297,7 @@
                 statusEl.innerHTML = `
                     <span style="color:red; font-weight:bold; font-size:15px;">有効な LINE データベースが見つかりませんでした。</span>
                     <p style="font-size:12px; color:#555; margin-top:8px;">
-                        ※ 選択したファイルが Line.sqlite や P_Line.sqlite であるか確認してください。
+                        ※ 選択したファイルが Line.sqlite や Talk.sqlite であるか確認してください。
                     </p>
                     ${logHtml}`;
                 return;
@@ -332,7 +332,7 @@
         function renderRegistrySummary() {
             const summaryEl = document.getElementById('file-summary');
             let walWarn = detectedRegistry.walShm.length > 0 
-                ? `<div class="wal-warning">⚠️ WAL差分データ (${detectedRegistry.walShm.length}件) が含まれています。最新情報が表示されない場合は事前統合を行ってください。</div>` 
+                ? `<div class="wal-warning">⚠️ WAL差分データ (${detectedRegistry.walShm.length}件) が検出されました。データベースに最新トークが残っている場合は事前結合を行ってください。</div>` 
                 : '';
 
             summaryEl.innerHTML = `
@@ -391,7 +391,7 @@
                         info.textCols = info.msgCols.filter(c => 
                             /TEXT|CONTENT|BODY|MESSAGE/i.test(c)
                         );
-                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE', 'ZDATE']);
+                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE', 'ZDATE', 'CREATEDTIME']);
                         info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'IS_OUT', 'FROM_ME']);
                         info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'ROOM_ID', 'CHAT', 'ZADDRESSBOOKID']);
                         info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID', 'FROM_MID', 'SENDER']);
@@ -536,12 +536,12 @@
 
                 try {
                     const chatCol = info.chatCol || 'ZCHAT';
-                    const timeCol = info.timeCol || 'ROWID';
+                    const timeCol = info.timeCol || 'ZCREATEDTIME';
 
                     const query = `
                         SELECT 
                             m."${chatCol}" as chat_id,
-                            COUNT(m.rowid) as msg_count,
+                            COUNT(*) as msg_count,
                             MAX(m."${timeCol}") as last_time
                         FROM "${info.msgTable}" m
                         WHERE m."${chatCol}" IS NOT NULL
@@ -591,7 +591,7 @@
             if (num <= 0) return 0;
 
             if (num > 100000000000000) return Math.floor(num / 1000);
-            if (num > 100000000000) return num;
+            if (num > 10000000000) return num;
             if (num > 100000000) {
                 if (num > 1000000000) return num * 1000;
                 return 978307200000 + (num * 1000);
@@ -630,26 +630,7 @@
             return itemList.filter(item => {
                 if (item.chatName.toLowerCase().includes(q)) return true;
                 if (String(item.chatId).toLowerCase().includes(q)) return true;
-
-                return item.relatedItems.some(rel => {
-                    const acc = accounts[rel.accountId];
-                    if (acc && acc.info && acc.info.msgTable) {
-                        try {
-                            const textCols = acc.info.textCols.length > 0 ? acc.info.textCols : ['ZTEXT', 'ZCONTENT', 'ZBODY'];
-                            const chatCol = acc.info.chatCol || 'ZCHAT';
-                            const safeChatId = String(rel.chatId).replace(/'/g, "''");
-                            const safeQ = q.replace(/'/g, "''");
-                            
-                            if (textCols.length === 0) return false;
-
-                            const clauses = textCols.map(c => `LOWER("${c}") LIKE '%${safeQ}%'`).join(' OR ');
-                            const checkSql = `SELECT 1 FROM "${acc.info.msgTable}" WHERE CAST("${chatCol}" AS TEXT) = '${safeChatId}' AND (${clauses}) LIMIT 1`;
-                            const checkRes = acc.db.exec(checkSql);
-                            return (checkRes.length && checkRes[0].values && checkRes[0].values.length > 0);
-                        } catch(e) {}
-                    }
-                    return false;
-                });
+                return false;
             });
         }
 
@@ -759,7 +740,7 @@
 
             try {
                 const chatCol = info.chatCol || 'ZCHAT';
-                const timeCol = info.timeCol || 'ROWID';
+                const timeCol = info.timeCol || 'ZCREATEDTIME';
 
                 let idConditions = [];
                 const idSet = new Set();
@@ -778,7 +759,7 @@
                 });
 
                 const whereClause = idConditions.length > 0 ? `WHERE (${idConditions.join(' OR ')})` : '';
-                const query = `SELECT * FROM "${info.msgTable}" ${whereClause} ORDER BY "${timeCol}" ASC`;
+                const query = `SELECT * FROM "${info.msgTable}" ${whereClause}`;
                 
                 const res = db.exec(query);
 
@@ -786,11 +767,12 @@
                     const columns = res[0].columns;
                     const cUpper = columns.map(c => c.toUpperCase());
 
-                    const timeIdx = info.timeCol ? cUpper.indexOf(info.timeCol.toUpperCase()) : -1;
+                    const timeIdx = timeCol ? cUpper.indexOf(timeCol.toUpperCase()) : -1;
                     const isMeIdx = info.isMeCol ? cUpper.indexOf(info.isMeCol.toUpperCase()) : -1;
                     const senderIdx = info.senderCol ? cUpper.indexOf(info.senderCol.toUpperCase()) : -1;
                     const typeIdx = info.typeCol ? cUpper.indexOf(info.typeCol.toUpperCase()) : -1;
 
+                    // 本文カラムの柔軟な取得
                     const possibleTextCols = ['ZTEXT', 'ZCONTENT', 'ZBODY', 'TEXT', 'CONTENT', 'BODY', 'ZMESSAGE_TEXT', 'MESSAGE_TEXT', 'ZMESSAGE', 'MESSAGE'];
                     const textIndices = [];
                     columns.forEach((col, idx) => {
@@ -820,7 +802,7 @@
                             if (typeVal !== null && CONTENT_TYPE_MAP[typeVal]) {
                                 textContent = CONTENT_TYPE_MAP[typeVal];
                             } else {
-                                textContent = '[スタンプ / メディア / 暗号化メッセージ]';
+                                textContent = '[スタンプ / 画像 / メディア / 暗号化トーク]';
                             }
                         } else if (typeVal !== null && typeVal !== 0 && typeVal !== '0') {
                             const typeLabel = CONTENT_TYPE_MAP[typeVal];
@@ -912,7 +894,7 @@
             if (allMsgs.length === 0) {
                 const emptyEl = document.createElement('div');
                 emptyEl.style.cssText = 'text-align:center; color:#fff; padding:30px;';
-                emptyEl.innerText = '表示できるメッセージがありませんでした。';
+                emptyEl.innerText = '表示できるメッセージが見つかりませんでした。';
                 chatView.appendChild(emptyEl);
                 return;
             }

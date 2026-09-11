@@ -493,7 +493,7 @@
             document.getElementById('status-bar').innerText = text;
         }
 
-        // --- フォルダドロップ（再帰検索）の実装 ---
+        // --- フォルダドロップ（100件上限を解消した完全再帰検索） ---
         const dropZone = document.getElementById('drop-zone');
         dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
@@ -521,29 +521,39 @@
             if (files.length > 0) {
                 await processFiles(files);
             } else {
-                alert('ファイルを取得できませんでした');
+                alert('フォルダからファイルを取得できませんでした');
+                updateStatus('エラー: ファイルの取得失敗');
             }
         });
 
+        async function readAllDirectoryEntries(dirReader) {
+            let entries = [];
+            let read = async () => {
+                let results = await new Promise(resolve => dirReader.readEntries(resolve));
+                if (results.length > 0) {
+                    entries = entries.concat(results);
+                    await read();
+                }
+            };
+            await read();
+            return entries;
+        }
+
         async function traverseFileTree(item, fileList) {
-            return new Promise((resolve) => {
-                if (item.isFile) {
+            if (item.isFile) {
+                return new Promise((resolve) => {
                     item.file(file => {
                         fileList.push(file);
                         resolve();
-                    });
-                } else if (item.isDirectory) {
-                    const dirReader = item.createReader();
-                    dirReader.readEntries(async entries => {
-                        for (let entry of entries) {
-                            await traverseFileTree(entry, fileList);
-                        }
-                        resolve();
-                    });
-                } else {
-                    resolve();
+                    }, () => resolve());
+                });
+            } else if (item.isDirectory) {
+                const dirReader = item.createReader();
+                const entries = await readAllDirectoryEntries(dirReader);
+                for (let entry of entries) {
+                    await traverseFileTree(entry, fileList);
                 }
-            });
+            }
         }
 
         document.getElementById('file-input').addEventListener('change', e => processFiles(Array.from(e.target.files)));
@@ -552,7 +562,6 @@
         async function processFiles(files) {
             updateStatus(`検索された ${files.length} 件のファイルからデータベースを特定中...`);
 
-            // 優先順位に従ってDBファイルを検索
             let mainFile = files.find(f => f.name.toLowerCase() === 'line.sqlite') ||
                            files.find(f => f.name.toLowerCase() === 'talk.sqlite') ||
                            files.find(f => f.name.toLowerCase().includes('naver_line')) ||

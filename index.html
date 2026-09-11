@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク解析・復元ツール (iOS CoreData対応)</title>
+    <title>LINE トーク解析・復元ツール (iOS CoreData対応版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -35,7 +35,9 @@
             margin: 40px auto; width: 90%; max-width: 700px;
             padding: 50px 20px; border: 2px dashed #00c300;
             border-radius: 12px; background: white; text-align: center; cursor: pointer;
+            transition: background 0.2s;
         }
+        #drop-zone:hover { background-color: #f7fff7; }
         #drop-zone input { display: none; }
         #status-msg { text-align: center; font-size: 14px; color: #555; margin-top: 10px; }
 
@@ -57,12 +59,13 @@
         .chat-avatar {
             width: 40px; height: 40px; border-radius: 50%; background: #00c300;
             color: white; display: flex; align-items: center; justify-content: center; font-weight: bold;
+            flex-shrink: 0;
         }
         .chat-info { flex: 1; min-width: 0; }
         .chat-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .chat-count { font-size: 11px; color: #777; margin-top: 2px; }
 
-        #chat-view { flex: 1; background: #8cabd9; padding: 20px; overflow-y: auto; }
+        #chat-view { flex: 1; background: #8cabd9; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
         .chat-header { background: white; padding: 14px 18px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .chat-header h2 { margin: 0; font-size: 16px; color: #111; }
 
@@ -86,9 +89,9 @@
     </header>
 
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <h3>📁 Line.sqlite または P_Line.sqlite をドロップ</h3>
-        <p style="color: #666; font-size: 13px;">メッセージ件数が存在するSQLiteファイルを指定してください</p>
-        <input type="file" id="file-input">
+        <h3>📁 ファイルまたはフォルダをドロップ</h3>
+        <p style="color: #666; font-size: 13px;">Line.sqlite または P_Line.sqlite ファイル（もしくはフォルダ）を選択してください</p>
+        <input type="file" id="file-input" webkitdirectory multiple>
     </div>
     <div id="status-msg">ライブラリ初期化中...</div>
 
@@ -110,13 +113,13 @@
         let chatMap = {};
         let userMap = {};
         let extractedChats = [];
-        let schemaInfo = { msgTable: '', chatCol: '', textCols: [], timeCol: '', isMeCol: '' };
+        let schemaInfo = { msgTable: '', chatCol: '', textCols: [], timeCol: '', isMeCol: '', senderCol: '' };
 
         initSqlJs().then(sqlEngine => {
             SQL = sqlEngine;
-            document.getElementById('status-msg').innerText = '準備完了: SQLiteファイルをドロップしてください';
+            document.getElementById('status-msg').innerText = '準備完了: ファイルまたはフォルダをドロップしてください';
         }).catch(err => {
-            document.getElementById('status-msg').innerText = '初期化エラー: ' + err.message;
+            document.getElementById('status-msg').innerHTML = `<span style="color:red;">ライブラリ読み込み失敗: ネットワーク接続を確認してください (${err.message})</span>`;
         });
 
         const dropZone = document.getElementById('drop-zone');
@@ -125,15 +128,50 @@
         dropZone.addEventListener('dragover', (e) => e.preventDefault());
         dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
-            if (e.dataTransfer.files.length > 0) await processFile(e.dataTransfer.files[0]);
+            const items = e.dataTransfer.items;
+            let files = [];
+
+            if (items && items.length > 0) {
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.webkitGetAsEntry) {
+                        const entry = item.webkitGetAsEntry();
+                        if (entry) await traverseFileTree(entry, files);
+                    } else if (item.kind === 'file') {
+                        files.push(item.getAsFile());
+                    }
+                }
+            } else if (e.dataTransfer.files.length > 0) {
+                files = Array.from(e.dataTransfer.files);
+            }
+
+            let sqliteFile = files.find(f => f.name.toLowerCase().endsWith('.sqlite')) || files[0];
+            if (sqliteFile) await processFile(sqliteFile);
         });
+
         fileInput.addEventListener('change', async (e) => {
-            if (e.target.files.length > 0) await processFile(e.target.files[0]);
+            const files = Array.from(e.target.files);
+            let sqliteFile = files.find(f => f.name.toLowerCase().endsWith('.sqlite')) || files[0];
+            if (sqliteFile) await processFile(sqliteFile);
         });
+
+        async function traverseFileTree(item, fileList) {
+            if (item.isFile) {
+                return new Promise((resolve) => {
+                    item.file((file) => { fileList.push(file); resolve(); });
+                });
+            } else if (item.isDirectory) {
+                const dirReader = item.createReader();
+                const entries = await new Promise((resolve) => dirReader.readEntries(resolve));
+                for (const entry of entries) {
+                    await traverseFileTree(entry, fileList);
+                }
+            }
+        }
 
         async function processFile(file) {
             if (!SQL) return;
-            document.getElementById('status-msg').innerText = 'データベース解析中...';
+            document.getElementById('status-msg').innerText = `解析中: ${file.name} ...`;
 
             try {
                 const arrayBuffer = await file.arrayBuffer();
@@ -141,7 +179,8 @@
 
                 detectSchema();
                 if (!schemaInfo.msgTable) {
-                    alert('メッセージテーブルが見つかりませんでした。');
+                    alert('メッセージテーブルが見つかりませんでした。別のSQLiteファイルをお試しください。');
+                    document.getElementById('status-msg').innerText = 'エラー: 有効なテーブルが見つかりません';
                     return;
                 }
 
@@ -163,31 +202,23 @@
             if (!tablesRes.length) return;
             const tables = tablesRes[0].values.map(r => r[0]);
 
-            // メッセージテーブル特定
             schemaInfo.msgTable = tables.find(t => /^Z.*MESSAGE$/i.test(t) || /MESSAGE/i.test(t)) || '';
             if (!schemaInfo.msgTable) return;
 
             const colsRes = db.exec(`PRAGMA table_info("${schemaInfo.msgTable}")`);
             const cols = colsRes[0].values.map(c => c[1]);
 
-            // 部屋識別列
             schemaInfo.chatCol = cols.find(c => /^ZCHAT$/i.test(c) || /CHAT/i.test(c)) || cols[0];
-            
-            // 本文列（複数候補を全取得）
-            schemaInfo.textCols = cols.filter(c => /^ZTEXT$/i.test(c) || /TEXT/i.test(c) || /BODY/i.test(c) || /CONTENT/i.test(c) || /EXTRA/i.test(c));
-            
-            // 時刻列
+            schemaInfo.textCols = cols.filter(c => /^ZTEXT$/i.test(c) || /^ZBODY$/i.test(c) || /^ZCONTENT$/i.test(c) || /TEXT/i.test(c));
             schemaInfo.timeCol = cols.find(c => /^ZCREATEDTIME$/i.test(c) || /TIME/i.test(c) || /DATE/i.test(c)) || 'ROWID';
-
-            // 送信者判定列
             schemaInfo.isMeCol = cols.find(c => /^ZISFROMME$/i.test(c) || /IS_FROM_ME/i.test(c) || /IS_ME/i.test(c)) || '';
+            schemaInfo.senderCol = cols.find(c => /^ZSENDER$/i.test(c) || /SENDER/i.test(c) || /USER/i.test(c)) || '';
         }
 
         function buildDictionaries() {
             chatMap = {};
             userMap = {};
 
-            // チャット部屋名辞書
             try {
                 const chatTables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%CHAT%' OR name LIKE '%ROOM%')");
                 if (chatTables.length) {
@@ -207,7 +238,6 @@
                 }
             } catch (e) {}
 
-            // ユーザー名辞書
             try {
                 const userTables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%USER%' OR name LIKE '%CONTACT%')");
                 if (userTables.length) {
@@ -299,9 +329,9 @@
                     const cols = res[0].columns;
                     const timeIdx = cols.indexOf(schemaInfo.timeCol);
                     const isMeIdx = cols.indexOf(schemaInfo.isMeCol);
+                    const senderIdx = cols.indexOf(schemaInfo.senderCol);
 
                     res[0].values.forEach(row => {
-                        // テキスト抽出（複数候補の列から値が入っているものを自動取得）
                         let textContent = '';
                         for (let colName of schemaInfo.textCols) {
                             let idx = cols.indexOf(colName);
@@ -311,12 +341,18 @@
                             }
                         }
 
-                        if (!textContent) textContent = '[画像/スタンプ/通話履歴/システムメッセージ]';
+                        if (!textContent) textContent = '[スタンプ / 画像 / 通話履歴]';
 
                         let isMe = false;
                         if (isMeIdx !== -1) {
                             let val = row[isMeIdx];
                             isMe = (val === 1 || val === '1' || val === true);
+                        }
+
+                        let senderName = isMe ? '自分' : chatName;
+                        if (!isMe && senderIdx !== -1 && row[senderIdx]) {
+                            let senderId = String(row[senderIdx]);
+                            if (userMap[senderId]) senderName = userMap[senderId];
                         }
 
                         let timeVal = timeIdx !== -1 ? row[timeIdx] : null;
@@ -326,7 +362,7 @@
                         msgRow.className = `msg-row ${isMe ? 'me' : 'other'}`;
                         msgRow.innerHTML = `
                             <div class="msg-meta">
-                                <span>${isMe ? '自分' : escapeHtml(chatName)}</span>
+                                <span>${escapeHtml(senderName)}</span>
                                 <span>${timeStr}</span>
                             </div>
                             <div class="bubble">${escapeHtml(textContent)}</div>
@@ -345,14 +381,23 @@
             let date;
             if (num > 1000000000000) date = new Date(num);
             else if (num > 100000000) date = new Date(num * 1000);
-            else date = new Date(978307200000 + num * 1000); // Cocoa Epoch (iOS CoreData)
+            else date = new Date(978307200000 + num * 1000);
 
             if (isNaN(date.getTime())) return '';
             return `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
         }
 
         function filterChatList(val) { renderChatList(val); }
-        function escapeHtml(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>'); }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
     </script>
 </body>
 </html>

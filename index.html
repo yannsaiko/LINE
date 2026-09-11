@@ -29,6 +29,8 @@
         .add-files-bar { display: flex; gap: 6px; }
         .btn-small { background: #edf2f7; color: #2d3748; border: 1px solid #cbd5e0; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; flex: 1; text-align: center; }
         .btn-small:hover { background: #e2e8f0; }
+        .btn-print { background: #06c755; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 4px; }
+        .btn-print:hover { background: #05b34c; }
 
         #chat-list { flex: 1; overflow-y: auto; }
         .chat-item { padding: 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.15s; }
@@ -44,6 +46,7 @@
         #chat-header { background: #ffffff; padding: 10px 16px; border-bottom: 1px solid #e0e0e0; display: none; align-items: center; justify-content: space-between; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         #chat-header-title { font-weight: bold; font-size: 15px; }
         #chat-header-info { font-size: 11px; color: #666; }
+        .chat-header-actions { display: flex; align-items: center; gap: 10px; }
         
         #chat-view { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; }
         #empty-state { margin: auto; color: #4a5568; text-align: center; font-size: 15px; font-weight: bold; background: rgba(255,255,255,0.8); padding: 20px 30px; border-radius: 12px; }
@@ -69,6 +72,43 @@
         
         .highlight { background-color: #ffeb3b; padding: 1px 2px; border-radius: 2px; }
         #status-bar { background: #2d3748; color: white; font-size: 12px; padding: 6px 15px; }
+
+        /* 🖨️ 印刷専用CSS設定 */
+        @media print {
+            header, #sidebar, #status-bar, .file-inputs, .add-files-bar, #msg-search, .btn-print, #btn-reset {
+                display: none !important;
+            }
+            body, #app-container, #main-content, #chat-view {
+                height: auto !important;
+                overflow: visible !important;
+                background: #ffffff !important;
+                position: static !important;
+            }
+            #app-container {
+                display: block !important;
+            }
+            #chat-header {
+                display: flex !important;
+                border-bottom: 2px solid #06c755 !important;
+                padding: 10px 0 !important;
+                margin-bottom: 15px !important;
+            }
+            #chat-view {
+                padding: 0 !important;
+            }
+            .msg-row {
+                page-break-inside: avoid;
+                break-inside: avoid;
+                max-width: 85% !important;
+            }
+            .bubble, .avatar, .msg-avatar, .date-divider {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .date-divider {
+                border: 1px solid #ddd;
+            }
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 </head>
@@ -115,8 +155,11 @@
                     <div id="chat-header-title">トーク名</div>
                     <div id="chat-header-info">情報</div>
                 </div>
-                <div style="width: 220px;">
-                    <input type="text" id="msg-search" class="styled-input" placeholder="💬 メッセージ内を検索..." oninput="filterMessages(this.value)">
+                <div class="chat-header-actions">
+                    <div style="width: 180px;">
+                        <input type="text" id="msg-search" class="styled-input" placeholder="💬 メッセージ内検索..." oninput="filterMessages(this.value)">
+                    </div>
+                    <button class="btn-print" onclick="window.print()">🖨️ 印刷 / PDF保存</button>
                 </div>
             </div>
             <div id="chat-view">
@@ -149,7 +192,7 @@
 
         function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
 
-        // ドラッグ＆ドロップイベント設定（画面全体・ドロップゾーン両方対応）
+        const dropZone = document.getElementById('drop-zone');
         window.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
         window.addEventListener('dragleave', e => { if (e.clientX === 0 && e.clientY === 0) dropZone.classList.remove('dragover'); });
         window.addEventListener('drop', async e => {
@@ -160,7 +203,6 @@
             if (files.length > 0) processFiles(files);
         });
 
-        const dropZone = document.getElementById('drop-zone');
         document.querySelectorAll('.file-input-elem').forEach(el => el.addEventListener('change', e => processFiles(Array.from(e.target.files))));
         document.querySelectorAll('.folder-input-elem').forEach(el => el.addEventListener('change', e => processFiles(Array.from(e.target.files))));
 
@@ -204,17 +246,13 @@
             });
         }
 
-        // 画像やメディア等の不要ファイルを瞬時に除外するフィルター
         function isCandidateDbFile(file) {
-            if (!file || file.size < 512) return false; // 512バイト未満の空/小ファイルはスキップ
+            if (!file || file.size < 512) return false;
             const name = file.name.toLowerCase();
             const ext = name.split('.').pop();
-
-            // 不要な拡張子を高速除外
             const skipExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'm4a', 'mp3', 'aac', 'plist', 'json', 'xml', 'txt', 'pdf', 'zip', 'dat', 'thumb', 'tmp'];
             if (skipExts.includes(ext)) return false;
 
-            // 拡張子が sqlite / db / 無拡張子 / LINE関連名 の場合は候補とする
             return name.endsWith('.sqlite') || name.endsWith('.db') || name.endsWith('.sqlite3') || 
                    name.includes('line') || name.includes('talk') || name.includes('manifest') || !name.includes('.');
         }
@@ -228,8 +266,6 @@
 
         async function processFiles(files) {
             if (!SQL) return;
-
-            // 事前フィルターで対象ファイルを抽出
             const candidateFiles = files.filter(isCandidateDbFile);
             updateStatus(`スキャン中: ${files.length} 件から DB候補 ${candidateFiles.length} 件を検証...`);
 
@@ -277,7 +313,7 @@
             }
 
             if (validDbCount === 0 && allChatRooms.length === 0) {
-                alert('LINEのメッセージテーブル（ZMESSAGE / chat_history）を含むデータベースが見つかりませんでした。');
+                alert('LINEのメッセージテーブルが見つかりませんでした。');
                 updateStatus('エラー: LINE DB未検出');
                 return;
             }

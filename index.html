@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴 抽出・印刷ツール (エラー対策版)</title>
+    <title>LINE トーク履歴 抽出・印刷ツール</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -134,16 +134,6 @@
         }
         .me .bubble { background-color: #e2ffc7; border-bottom-right-radius: 4px; }
         .other .bubble { background-color: #ffffff; border: 1px solid #e0e0e0; border-bottom-left-radius: 4px; }
-        .error-log {
-            background: #fff0f0;
-            border: 1px solid #ffd0d0;
-            color: #d00000;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 13px;
-            margin-bottom: 15px;
-            white-space: pre-wrap;
-        }
 
         @media print {
             header, #sidebar, #drop-zone { display: none !important; }
@@ -166,7 +156,7 @@
 
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
         <h3>📁 ここに「Line.sqlite」ファイルをドロップ</h3>
-        <p style="color: #666;">（複数選択可）</p>
+        <p style="color: #666;">（フォルダごと・複数ファイルをまとめてドロップ可能）</p>
         <input type="file" id="file-input" accept=".sqlite,.db,application/vnd.sqlite3" multiple>
     </div>
 
@@ -208,26 +198,37 @@
             if (e.target.files.length > 0) handleFiles(Array.from(e.target.files));
         });
 
+        // 複ふく数すうファイルの読よみ込こみ＆フィルター処しょ理り
         async function handleFiles(fileList) {
             accounts = [];
-            let errMsgs = [];
 
-            for (let file of fileList) {
+            // -wal, -shm などのログ・一いち時じファイルを自じ動どう除じょ外がい
+            const validFiles = fileList.filter(file => {
+                const name = file.name.toLowerCase();
+                if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) {
+                    return false;
+                }
+                return true;
+            });
+
+            for (let file of validFiles) {
                 try {
                     const arrayBuffer = await file.arrayBuffer();
                     const uInt8Array = new Uint8Array(arrayBuffer);
                     const dbInstance = new SQL.Database(uInt8Array);
+
+                    // データベースとして正せい常じょうにクエリが実じっ行こうできるかチェック（破は損そんファイルの排はい除じょ）
+                    dbInstance.exec("SELECT count(*) FROM sqlite_master");
                     
                     accounts.push({ fileName: file.name, db: dbInstance });
-                } catch (error) {
-                    errMsgs.push(`${file.name}: ${error.message}`);
+                } catch (e) {
+                    // エラーが発はっ生せいしたファイルは画が面めんに何なんも表ひょう示じせずスキップ
+                    console.warn(`スキップされたファイル (${file.name}):`, e);
                 }
             }
 
-            if (accounts.length === 0) {
-                alert("ファイル読よみ込こみエラー:\n" + errMsgs.join("\n"));
-                return;
-            }
+            // 正せい常じょうに読よみ込こめたファイルが1つもない場ば合あいは何なんもしない
+            if (accounts.length === 0) return;
 
             dropZone.style.display = 'none';
             document.getElementById('app-container').style.display = 'flex';
@@ -277,12 +278,11 @@
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
         }
 
-        // 安あん全ぜんなトークルーム一いち覧らん取しゅ得とく（多た段だん階かいフォールバック）
+        // トークルーム一いち覧らん取しゅ得とく（エラーは静しずかに無む視し）
         function loadChatRooms() {
             const chatList = document.getElementById('chat-list');
             chatList.innerHTML = '';
 
-            // パターン1: 通つう常じょうのZCHAT構こう造ぞう
             let query1 = `
                 SELECT 
                     c.Z_PK,
@@ -295,11 +295,10 @@
                 ORDER BY last_time DESC
             `;
 
-            // パターン2: フォールバック（ZCHATがない・紐ひも付づかない場ば合あい、ZMESSAGEから直ちょく接せつ全ぜん件けん）
             let query2 = `
                 SELECT 
                     1 as Z_PK,
-                    '全ぜんメッセージ履り歴れき (一いっ括かつ)' as name,
+                    '全ぜんメッセージ履り歴れき' as name,
                     COUNT(Z_PK) as msg_count,
                     MAX(ZCREATEDTIME) as last_time
                 FROM ZMESSAGE
@@ -310,14 +309,10 @@
                 try {
                     res = currentDb.exec(query1);
                 } catch (e1) {
-                    console.warn("ZCHATからの取しゅ得とく失しっ敗ぱい。フォールバックを実じっ行こうします", e1);
                     res = currentDb.exec(query2);
                 }
 
-                if (!res.length || !res[0].values.length) {
-                    chatList.innerHTML = '<div style="padding:15px; color:#666;">有ゆう効こうなトークデータが見みつかりませんでした</div>';
-                    return;
-                }
+                if (!res || !res.length || !res[0].values.length) return;
 
                 res[0].values.forEach(row => {
                     const [chatId, name, count, lastTime] = row;
@@ -339,17 +334,15 @@
                 });
 
             } catch (err) {
-                console.error("ロードエラー:", err);
-                chatList.innerHTML = `<div class="error-log">DB読よみ込こみエラー:\n${escapeHtml(err.message)}</div>`;
+                // エラー表ひょう示じは行おこなわない
             }
         }
 
-        // 安あん全ぜんなメッセージ取しゅ得とく
+        // メッセージ取しゅ得とく（エラーは静しずかに無む視し）
         function loadMessages(chatId, chatName) {
             const chatView = document.getElementById('chat-view');
             chatView.innerHTML = `<div class="chat-header">${escapeHtml(chatName)} のトーク履り歴れき</div>`;
 
-            // パターン1: 詳しょう細さい情じょう報ほう（差出さ人にん名めいやコンテントタイプ付つき）
             let q1 = `
                 SELECT 
                     m.ZTEXT,
@@ -362,7 +355,6 @@
                 ORDER BY m.ZCREATEDTIME ASC
             `;
 
-            // パターン2: 最さい軽けい量りょう（エラー回かい避ひ優ゆう先せん）
             let q2 = `
                 SELECT 
                     ZTEXT,
@@ -381,14 +373,11 @@
                     res = currentDb.exec(q2);
                 }
 
-                if (!res.length || !res[0].values.length) {
-                    chatView.innerHTML += '<div style="color:#888;">メッセージがありません</div>';
-                    return;
-                }
+                if (!res || !res.length || !res[0].values.length) return;
 
                 res[0].values.forEach(row => {
                     const [text, ts, isMe, senderName] = row;
-                    if (!text) return; // 空そらテキストはスキップ
+                    if (!text) return;
 
                     const isMeBool = Boolean(isMe);
                     const senderLabel = isMeBool ? '自じ分ぶん' : senderName;
@@ -405,7 +394,7 @@
                 });
 
             } catch (err) {
-                chatView.innerHTML += `<div class="error-log">メッセージ読よみ込こみエラー:\n${escapeHtml(err.message)}</div>`;
+                // エラー表ひょう示じは行おこなわない
             }
         }
     </script>

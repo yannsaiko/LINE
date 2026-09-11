@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク・全関連ファイル自動検索＆深層解析ツール (高速化版)</title>
+    <title>LINE トーク・全関連ファイル自動検索＆深層解析ツール (高速化・名前取得強化版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -434,7 +434,6 @@
             return files;
         }
 
-        // 先頭16バイトのみを軽量読み込みしてSQLite判定（ブラウザ停止防止）
         async function isSqliteHeader(file) {
             if (file.size < 100) return false;
             try {
@@ -465,7 +464,7 @@
 
                 if (i % 20 === 0 || i === totalFiles - 1) {
                     statusEl.innerText = `ファイルを高速スキャン中... (${i + 1} / ${totalFiles} 件完了)`;
-                    await new Promise(r => setTimeout(r, 0)); // 画面更新用のイールド
+                    await new Promise(r => setTimeout(r, 0));
                 }
 
                 if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) {
@@ -483,7 +482,6 @@
                     continue;
                 }
 
-                // SQLiteヘッダー高速チェック
                 const isSqlite = await isSqliteHeader(file);
                 if (isSqlite) {
                     try {
@@ -567,7 +565,7 @@
                 allTables: [],
                 msgTable: null, msgCols: [], textCol: null, timeCol: null, isMeCol: null, chatCol: null, 
                 senderCol: null, typeCol: null, chatTable: null, userTable: null,
-                userCols: [], userPkCol: null, userMidCol: null, chatMidCol: null, chatNameCol: null
+                userCols: [], chatCols: [], userPkCol: null, userMidCol: null, chatMidCol: null, chatNameCol: null
             };
 
             try {
@@ -638,16 +636,16 @@
                 if (info.chatTable) {
                     const cColsRes = db.exec(`PRAGMA table_info(${info.chatTable})`);
                     if (cColsRes.length) {
-                        const cCols = cColsRes[0].values.map(c => c[1]);
-                        const cUpper = cCols.map(c => c.toUpperCase());
+                        info.chatCols = cColsRes[0].values.map(c => c[1]);
+                        const cUpper = info.chatCols.map(c => c.toUpperCase());
                         const findChatCol = (candidates) => {
                             for (let cand of candidates) {
                                 let idx = cUpper.indexOf(cand.toUpperCase());
-                                if (idx !== -1) return cCols[idx];
+                                if (idx !== -1) return info.chatCols[idx];
                             }
-                            return cCols.find(c => candidates.some(cand => c.toUpperCase().includes(cand.toUpperCase())));
+                            return info.chatCols.find(c => candidates.some(cand => c.toUpperCase().includes(cand.toUpperCase())));
                         };
-                        info.chatNameCol = findChatCol(['ZNAME', 'NAME', 'TITLE', 'CHAT_NAME']);
+                        info.chatNameCol = findChatCol(['ZNAME', 'ZCHATNAME', 'TITLE', 'CHAT_NAME', 'NAME']);
                         info.chatMidCol = findChatCol(['ZMID', 'MID', 'ZCHATID', 'CHAT_ID', 'ID']);
                     }
                 }
@@ -732,28 +730,45 @@
                 const chatCol = info.chatCol || 'ZCHAT';
                 const timeCol = info.timeCol || 'ROWID';
 
-                if (info.chatTable) {
-                    let nameExpr = "c.ZNAME";
-                    let joinUserSql = "";
+                // ユーザーテーブルが存在する場合、名前のカラム候補を拡張抽出
+                let userCandidatesSql = [];
+                if (info.userTable && info.userCols && info.userCols.length > 0) {
+                    const possibleCols = ['ZCUSTOMNAME', 'ZNAME', 'ZDISPLAYNAME', 'ZNICKNAME', 'ZPHONETICNAME', 'ZADDRESSBOOKNAME', 'NAME', 'DISPLAY_NAME'];
+                    possibleCols.forEach(colName => {
+                        const matched = info.userCols.find(c => c.toUpperCase() === colName);
+                        if (matched) userCandidatesSql.push(`NULLIF(u.${matched}, '')`);
+                    });
+                }
 
-                    if (info.userTable && info.userMidCol && info.chatMidCol) {
-                        const targetUserCols = ['u.ZCUSTOMNAME', 'u.ZNAME', 'u.ZPHONETICNAME', 'u.ZDISPLAYNAME', 'u.ZNICKNAME', 'u.ZADDRESSBOOKNAME'];
-                        const existingCols = targetUserCols.filter(col => {
-                            const colName = col.replace('u.', '');
-                            return info.userCols.some(c => c.toUpperCase() === colName);
-                        });
-                        if (existingCols.length > 0) {
-                            const userColsSql = existingCols.map(c => `NULLIF(${c}, '')`).join(', ');
-                            nameExpr = `COALESCE(NULLIF(c.${info.chatNameCol || 'ZNAME'}, ''), ${userColsSql}, 'トーク相手 (ID: ' || c.rowid || ')')`;
-                        } else {
-                            nameExpr = `COALESCE(NULLIF(c.${info.chatNameCol || 'ZNAME'}, ''), 'トーク相手 (ID: ' || c.rowid || ')')`;
+                // チャットテーブル自体から取得可能な名前カラム候補
+                let chatCandidatesSql = [];
+                if (info.chatTable && info.chatCols && info.chatCols.length > 0) {
+                    const possibleCols = ['ZNAME', 'ZCHATNAME', 'TITLE', 'CHAT_NAME', 'NAME'];
+                    possibleCols.forEach(colName => {
+                        const matched = info.chatCols.find(c => c.toUpperCase() === colName);
+                        if (matched) chatCandidatesSql.push(`NULLIF(c.${matched}, '')`);
+                    });
+                }
+
+                const allNameCandidates = [...chatCandidatesSql, ...userCandidatesSql];
+                let nameExpr = "''";
+                if (allNameCandidates.length > 0) {
+                    nameExpr = `COALESCE(${allNameCandidates.join(', ')}, 'トーク相手 (ID: ' || c.rowid || ')')`;
+                } else {
+                    nameExpr = `'トーク相手 (ID: ' || c.rowid || ')'`;
+                }
+
+                if (info.chatTable) {
+                    let joinUserSql = "";
+                    if (info.userTable) {
+                        if (info.chatMidCol && info.userMidCol) {
+                            joinUserSql = `LEFT JOIN ${info.userTable} u ON c.${info.chatMidCol} = u.${info.userMidCol}`;
+                        } else if (info.userPkCol) {
+                            joinUserSql = `LEFT JOIN ${info.userTable} u ON c.rowid = u.${info.userPkCol}`;
                         }
-                        joinUserSql = `LEFT JOIN ${info.userTable} u ON c.${info.chatMidCol} = u.${info.userMidCol}`;
-                    } else {
-                        nameExpr = `COALESCE(NULLIF(c.${info.chatNameCol || 'ZNAME'}, ''), 'トーク相手 (ID: ' || c.rowid || ')')`;
                     }
 
-                    const pkCol = info.chatTable ? (db.exec(`PRAGMA table_info(${info.chatTable})`)[0]?.values.find(v => v[1].toUpperCase() === 'Z_PK') ? 'Z_PK' : 'rowid') : 'rowid';
+                    const pkCol = db.exec(`PRAGMA table_info(${info.chatTable})`)[0]?.values.find(v => v[1].toUpperCase() === 'Z_PK') ? 'Z_PK' : 'rowid';
 
                     const joinQuery = `
                         SELECT 
@@ -908,14 +923,11 @@
             let joinSql = "";
 
             if (info.userTable && info.senderCol && info.userCols && info.userCols.length > 0) {
-                const targetUserCols = ['u.ZCUSTOMNAME', 'u.ZNAME', 'u.ZPHONETICNAME', 'u.ZDISPLAYNAME', 'u.ZNICKNAME', 'u.ZADDRESSBOOKNAME'];
-                const existingCols = targetUserCols.filter(col => {
-                    const colName = col.replace('u.', '');
-                    return info.userCols.some(c => c.toUpperCase() === colName);
-                });
+                const possibleUserCols = ['ZCUSTOMNAME', 'ZNAME', 'ZDISPLAYNAME', 'ZNICKNAME', 'ZPHONETICNAME', 'ZADDRESSBOOKNAME', 'NAME', 'DISPLAY_NAME'];
+                const existingCols = possibleUserCols.filter(colName => info.userCols.some(c => c.toUpperCase() === colName));
 
                 if (existingCols.length > 0) {
-                    const userColsSql = existingCols.map(c => `NULLIF(${c}, '')`).join(', ');
+                    const userColsSql = existingCols.map(c => `NULLIF(u.${c}, '')`).join(', ');
                     selectSenderSql = `COALESCE(${userColsSql}) as JOINED_SENDER_NAME`;
                 }
 

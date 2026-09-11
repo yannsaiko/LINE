@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴マルチビューア (高機能フル版)</title>
+    <title>LINE トーク履歴マルチビューア (メモリ軽量化版)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f5f5f5; color: #333; }
@@ -65,8 +65,8 @@
         .highlight { background-color: #ffeb3b; padding: 1px 2px; border-radius: 2px; }
         #status-bar { background: #2d3748; color: white; font-size: 12px; padding: 6px 15px; }
     </style>
-    <!-- jsDelivr経由でファイルローカル実行（file://）に対応した完全独立型sql-asm.jsを読み込み -->
-    <script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-asm.js"></script>
+    <!-- メモリ効率に優れたWASM版sql.jsを読み込み -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 </head>
 <body>
     <header>
@@ -119,18 +119,20 @@
 
     <script>
         let SQL = null;
-        let databases = [];
+        let fileMap = {}; // ファイル参照のみ保持（軽量化）
         let allChatRooms = [];
         let activeChat = null;
         let rawMessages = [];
 
         window.addEventListener('DOMContentLoaded', async () => {
             try {
-                updateStatus('SQL.js エンジン初期化中...');
+                updateStatus('SQL.js Engine (WASM) 初期化中...');
                 if (typeof initSqlJs === 'undefined') {
-                    throw new Error("sql.js ライブラリが読み込まれていません。インターネット接続を確認してください。");
+                    throw new Error("sql.js ライブラリが読み込まれていません。");
                 }
-                SQL = await initSqlJs();
+                SQL = await initSqlJs({
+                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+                });
                 updateStatus('準備完了: ファイルまたはフォルダーをドロップしてください');
             } catch (err) {
                 updateStatus('初期化エラー: ' + err.message);
@@ -154,13 +156,8 @@
             if (files.length > 0) processFiles(files);
         });
 
-        document.getElementById('file-input').addEventListener('change', e => {
-            processFiles(Array.from(e.target.files));
-        });
-
-        document.getElementById('folder-input').addEventListener('change', e => {
-            processFiles(Array.from(e.target.files));
-        });
+        document.getElementById('file-input').addEventListener('change', e => processFiles(Array.from(e.target.files)));
+        document.getElementById('folder-input').addEventListener('change', e => processFiles(Array.from(e.target.files)));
 
         async function getFilesFromDataTransfer(dataTransfer) {
             const files = [];
@@ -171,9 +168,8 @@
                     const item = items[i];
                     if (item.kind === 'file') {
                         const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
-                        if (entry) {
-                            promises.push(traverseFileTree(entry, files));
-                        } else {
+                        if (entry) promises.push(traverseFileTree(entry, files));
+                        else {
                             const file = item.getAsFile();
                             if (file) files.push(file);
                         }
@@ -189,7 +185,7 @@
         function traverseFileTree(item, files) {
             return new Promise((resolve) => {
                 if (item.isFile) {
-                    item.file((file) => {
+                    item.file(file => {
                         file.fullPath = item.fullPath || file.name;
                         files.push(file);
                         resolve();
@@ -197,20 +193,16 @@
                 } else if (item.isDirectory) {
                     const dirReader = item.createReader();
                     const readEntries = () => {
-                        dirReader.readEntries(async (entries) => {
-                            if (!entries || entries.length === 0) {
-                                resolve();
-                            } else {
-                                const promises = entries.map(entry => traverseFileTree(entry, files));
-                                await Promise.all(promises);
+                        dirReader.readEntries(async entries => {
+                            if (!entries || entries.length === 0) resolve();
+                            else {
+                                await Promise.all(entries.map(entry => traverseFileTree(entry, files)));
                                 readEntries();
                             }
                         }, () => resolve());
                     };
                     readEntries();
-                } else {
-                    resolve();
-                }
+                } else resolve();
             });
         }
 
@@ -223,46 +215,54 @@
 
         async function processFiles(files) {
             if (!SQL) return;
-            updateStatus(`スキャン中: ${files.length} 件のファイルを処理中...`);
-            databases = [];
+            updateStatus(`スキャン中: ${files.length} 件のファイルを順次解析中...`);
+            fileMap = {};
             allChatRooms = [];
 
             const fileFilterSelect = document.getElementById('file-filter');
             fileFilterSelect.innerHTML = '<option value="ALL">すべてのファイル/フォルダー</option>';
 
+            let validDbCount = 0;
+
             for (let i = 0; i < files.length; i++) {
                 const f = files[i];
-                if (f.size > 500 * 1024 * 1024) continue;
+                const fileId = 'file_' + i;
+                const displayLabel = f.webkitRelativePath || f.fullPath || f.name;
 
                 try {
+                    // 先頭16バイトのみチェックして高速判定
+                    const slice = await f.slice(0, 16).arrayBuffer();
+                    if (!isSqliteFile(slice)) continue;
+
+                    updateStatus(`[${i + 1}/${files.length}] 解析中: ${f.name}`);
                     const buf = await f.arrayBuffer();
-                    if (!isSqliteFile(buf)) continue;
-
-                    const db = new SQL.Database(new Uint8Array(buf));
+                    let db = new SQL.Database(new Uint8Array(buf));
                     const schema = detectSchema(db);
-                    if (!schema.msgTable) continue;
 
-                    const displayLabel = f.webkitRelativePath || f.fullPath || f.name;
-                    const { userMap, chatMap, myMid } = loadDictionaries(db, schema);
-                    schema.myMid = myMid;
+                    if (schema.msgTable) {
+                        fileMap[fileId] = { file: f, displayLabel, schema };
 
-                    const dbObj = { id: 'db_' + databases.length, fileName: f.name, displayLabel, db, schema, userMap, chatMap };
-                    databases.push(dbObj);
+                        const opt = document.createElement('option');
+                        opt.value = fileId;
+                        opt.innerText = displayLabel;
+                        fileFilterSelect.appendChild(opt);
 
-                    const opt = document.createElement('option');
-                    opt.value = dbObj.id;
-                    opt.innerText = displayLabel;
-                    fileFilterSelect.appendChild(opt);
+                        const { userMap, chatMap } = loadDictionaries(db, schema);
+                        const rooms = fetchChatRooms(db, schema, userMap, chatMap, fileId, displayLabel);
+                        allChatRooms.push(...rooms);
+                        validDbCount++;
+                    }
 
-                    const rooms = fetchChatRooms(dbObj);
-                    allChatRooms.push(...rooms);
+                    // ★ メモリ即時解放
+                    db.close();
+                    db = null;
                 } catch (err) {
-                    console.warn("スキップ:", f.name, err);
+                    console.warn("スキップ (メモリ不足またはファイル破綻):", f.name, err);
                 }
             }
 
-            if (databases.length === 0) {
-                alert('LINEの有効なデータベース（ZMESSAGE または chat_history）が見つかりませんでした。');
+            if (validDbCount === 0) {
+                alert('LINEの有効なデータベースが見つかりませんでした。');
                 updateStatus('エラー: 有効なDB未検出');
                 return;
             }
@@ -309,15 +309,7 @@
         }
 
         function loadDictionaries(db, sch) {
-            let userMap = {}, chatMap = {}, myMid = null;
-            
-            // 自分のMID取得
-            try {
-                const res = db.exec("SELECT value FROM setting WHERE key = 'my_mid' OR key = 'MY_MID'")[0];
-                if (res && res.values.length > 0) myMid = String(res.values[0][0] || '');
-            } catch(e){}
-
-            // ユーザーテーブル（名前）解析
+            let userMap = {}, chatMap = {};
             if (sch.userTable) {
                 try {
                     const res = db.exec(`SELECT * FROM "${sch.userTable}"`)[0];
@@ -338,7 +330,6 @@
                 } catch(e){}
             }
 
-            // チャットテーブル（グループ名/トーク名）解析
             if (sch.chatTable) {
                 try {
                     const res = db.exec(`SELECT * FROM "${sch.chatTable}"`)[0];
@@ -349,19 +340,15 @@
                         
                         res.values.forEach(r => {
                             let name = nameIdx !== -1 ? r[nameIdx] : null;
-                            if (name && pkIdx !== -1 && r[pkIdx] !== undefined) {
-                                chatMap[String(r[pkIdx])] = String(name);
-                            }
+                            if (name && pkIdx !== -1 && r[pkIdx] !== undefined) chatMap[String(r[pkIdx])] = String(name);
                         });
                     }
                 } catch(e){}
             }
-
-            return { userMap, chatMap, myMid };
+            return { userMap, chatMap };
         }
 
-        function fetchChatRooms(dbObj) {
-            const { id: dbId, displayLabel, db, schema: sch, userMap, chatMap } = dbObj;
+        function fetchChatRooms(db, sch, userMap, chatMap, fileId, displayLabel) {
             const query = `
                 SELECT "${sch.chatCol}", COUNT(*), MAX("${sch.timeCol}")
                 FROM "${sch.msgTable}"
@@ -375,23 +362,22 @@
 
             return res.values.map(r => {
                 const chatId = String(r[0]);
-                // トーク名の多角的な特定（chatMap -> userMap -> デフォルト名）
                 let name = chatMap[chatId] || userMap[chatId] || `トーク (${chatId})`;
                 const dateObj = parseTimestamp(r[2]);
-                return { dbId, displayLabel, id: chatId, name, count: r[1], lastTime: dateObj ? formatDate(dateObj) : '' };
+                return { fileId, displayLabel, id: chatId, name, count: r[1], lastTime: dateObj ? formatDate(dateObj) : '' };
             });
         }
 
         function applyFilters() {
-            const selectedDbId = document.getElementById('file-filter').value;
+            const selectedFileId = document.getElementById('file-filter').value;
             const searchQuery = document.getElementById('chat-search').value.toLowerCase().trim();
 
             const filtered = allChatRooms.filter(item => {
-                const matchesDb = (selectedDbId === 'ALL' || item.dbId === selectedDbId);
+                const matchesFile = (selectedFileId === 'ALL' || item.fileId === selectedFileId);
                 const matchesSearch = item.name.toLowerCase().includes(searchQuery) || 
                                       item.displayLabel.toLowerCase().includes(searchQuery) ||
                                       item.id.toLowerCase().includes(searchQuery);
-                return matchesDb && matchesSearch;
+                return matchesFile && matchesSearch;
             });
 
             renderChatList(filtered);
@@ -408,7 +394,7 @@
 
             list.forEach(item => {
                 const el = document.createElement('div');
-                el.className = `chat-item ${activeChat && activeChat.id === item.id && activeChat.dbId === item.dbId ? 'active' : ''}`;
+                el.className = `chat-item ${activeChat && activeChat.id === item.id && activeChat.fileId === item.fileId ? 'active' : ''}`;
                 el.innerHTML = `
                     <div class="avatar">${escapeHtml(item.name.charAt(0))}</div>
                     <div class="chat-meta">
@@ -421,64 +407,84 @@
                     document.querySelectorAll('.chat-item').forEach(i => i.classList.remove('active'));
                     el.classList.add('active');
                     activeChat = item;
-                    loadMessages(databases.find(d => d.id === item.dbId), item);
+                    loadMessagesOnDemand(item);
                 };
                 container.appendChild(el);
             });
         }
 
-        function loadMessages(dbObj, chatItem) {
-            updateStatus(`メッセージ読み込み中...`);
-            const { db, schema: sch, userMap } = dbObj;
-            const safeId = String(chatItem.id).replace(/'/g, "''");
+        // ★ 必要になった時だけファイルを開いてメッセージを取得
+        async function loadMessagesOnDemand(chatItem) {
+            updateStatus(`メッセージ読込中... (${chatItem.name})`);
+            const fileObj = fileMap[chatItem.fileId];
+            if (!fileObj) return;
 
-            const query = `
-                SELECT "${sch.textCol}", ${sch.isMeCol ? `"${sch.isMeCol}"` : 'NULL'}, "${sch.senderCol}", "${sch.timeCol}", "${sch.typeCol}"
-                FROM "${sch.msgTable}"
-                WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}'
-                ORDER BY "${sch.timeCol}" ASC
-            `;
+            try {
+                const buf = await fileObj.file.arrayBuffer();
+                let db = new SQL.Database(new Uint8Array(buf));
+                const sch = fileObj.schema;
 
-            let res;
-            try { res = db.exec(query)[0]; } catch(e) { alert('取得失敗: ' + e.message); return; }
-            if (!res || !res.values) return;
+                const { userMap } = loadDictionaries(db, sch);
 
-            rawMessages = res.values.map((r) => {
-                const rawText = r[0] || '';
-                const isMeVal = r[1];
-                const senderId = String(r[2] || '');
-                const rawTime = r[3];
-                const type = r[4];
+                let myMid = null;
+                try {
+                    const r = db.exec("SELECT value FROM setting WHERE key = 'my_mid' OR key = 'MY_MID'")[0];
+                    if (r && r.values.length > 0) myMid = String(r.values[0][0] || '');
+                } catch(e){}
 
-                // 自分の発言判定を強化
-                let isMe = false;
-                if (sch.myMid && senderId === sch.myMid) {
-                    isMe = true;
-                } else if (isMeVal !== null && isMeVal !== undefined) {
-                    isMe = (Number(isMeVal) === 1 || isMeVal === true || String(isMeVal) === '1' || Number(isMeVal) === 2);
-                } else {
-                    isMe = (!senderId || senderId === '0' || senderId === '' || senderId === 'null');
-                }
+                const safeId = String(chatItem.id).replace(/'/g, "''");
+                const query = `
+                    SELECT "${sch.textCol}", ${sch.isMeCol ? `"${sch.isMeCol}"` : 'NULL'}, "${sch.senderCol}", "${sch.timeCol}", "${sch.typeCol}"
+                    FROM "${sch.msgTable}"
+                    WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}'
+                    ORDER BY "${sch.timeCol}" ASC
+                `;
 
-                let senderName = isMe ? '自分' : (userMap[senderId] || chatItem.name);
-                let text = rawText || `[メディア / タイプ: ${type}]`;
-                const dateObj = parseTimestamp(rawTime);
+                let res = db.exec(query)[0];
+                
+                // 読込終了後すぐにDB解放
+                db.close();
+                db = null;
 
-                return {
-                    text, isMe, senderName,
-                    dateStr: dateObj ? formatDateHeader(dateObj) : '',
-                    timeStr: dateObj ? formatTime(dateObj) : '',
-                    timestamp: dateObj ? dateObj.getTime() : 0
-                };
-            });
+                if (!res || !res.values) return;
 
-            // ヘッダー情報の更新
-            document.getElementById('chat-header').style.display = 'flex';
-            document.getElementById('chat-header-title').innerText = chatItem.name;
-            document.getElementById('chat-header-info').innerText = `${chatItem.count}件のメッセージ (${chatItem.displayLabel})`;
-            document.getElementById('msg-search').value = '';
+                rawMessages = res.values.map(r => {
+                    const rawText = r[0] || '';
+                    const isMeVal = r[1];
+                    const senderId = String(r[2] || '');
+                    const rawTime = r[3];
+                    const type = r[4];
 
-            renderMessagesUI(rawMessages);
+                    let isMe = false;
+                    if (myMid && senderId === myMid) {
+                        isMe = true;
+                    } else if (isMeVal !== null && isMeVal !== undefined) {
+                        isMe = (Number(isMeVal) === 1 || isMeVal === true || String(isMeVal) === '1' || Number(isMeVal) === 2);
+                    } else {
+                        isMe = (!senderId || senderId === '0' || senderId === '' || senderId === 'null');
+                    }
+
+                    let senderName = isMe ? '自分' : (userMap[senderId] || chatItem.name);
+                    let text = rawText || `[メディア / タイプ: ${type}]`;
+                    const dateObj = parseTimestamp(rawTime);
+
+                    return {
+                        text, isMe, senderName,
+                        dateStr: dateObj ? formatDateHeader(dateObj) : '',
+                        timeStr: dateObj ? formatTime(dateObj) : ''
+                    };
+                });
+
+                document.getElementById('chat-header').style.display = 'flex';
+                document.getElementById('chat-header-title').innerText = chatItem.name;
+                document.getElementById('chat-header-info').innerText = `${chatItem.count}件のメッセージ (${chatItem.displayLabel})`;
+                document.getElementById('msg-search').value = '';
+
+                renderMessagesUI(rawMessages);
+            } catch (err) {
+                alert('メッセージ読み込みエラー: ' + err.message);
+                updateStatus('エラー: ' + err.message);
+            }
         }
 
         function filterMessages(query) {

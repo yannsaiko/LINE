@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク解析・復元ツール (iOS CoreData対応版)</title>
+    <title>LINE トーク解析・復元ツール (iOS CoreData対応)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -89,9 +89,9 @@
     </header>
 
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <h3>📁 ファイルまたはフォルダをドロップ</h3>
-        <p style="color: #666; font-size: 13px;">Line.sqlite または P_Line.sqlite ファイル（もしくはフォルダ）を選択してください</p>
-        <input type="file" id="file-input" webkitdirectory multiple>
+        <h3>📁 Line.sqlite または P_Line.sqlite ファイルをドロップ</h3>
+        <p style="color: #666; font-size: 13px;">※フォルダではなく、.sqlite ファイル単体を直接選択・ドロップしてください</p>
+        <input type="file" id="file-input" accept=".sqlite">
     </div>
     <div id="status-msg">ライブラリ初期化中...</div>
 
@@ -117,9 +117,9 @@
 
         initSqlJs().then(sqlEngine => {
             SQL = sqlEngine;
-            document.getElementById('status-msg').innerText = '準備完了: ファイルまたはフォルダをドロップしてください';
+            document.getElementById('status-msg').innerText = '準備完了: Line.sqlite または P_Line.sqlite ファイルを選択してください';
         }).catch(err => {
-            document.getElementById('status-msg').innerHTML = `<span style="color:red;">ライブラリ読み込み失敗: ネットワーク接続を確認してください (${err.message})</span>`;
+            document.getElementById('status-msg').innerHTML = `<span style="color:red;">ライブラリ読み込み失敗: ネット接続を確認してください (${err.message})</span>`;
         });
 
         const dropZone = document.getElementById('drop-zone');
@@ -128,46 +128,17 @@
         dropZone.addEventListener('dragover', (e) => e.preventDefault());
         dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
-            const items = e.dataTransfer.items;
-            let files = [];
-
-            if (items && items.length > 0) {
-                for (let i = 0; i < items.length; i++) {
-                    const item = items[i];
-                    if (item.webkitGetAsEntry) {
-                        const entry = item.webkitGetAsEntry();
-                        if (entry) await traverseFileTree(entry, files);
-                    } else if (item.kind === 'file') {
-                        files.push(item.getAsFile());
-                    }
-                }
-            } else if (e.dataTransfer.files.length > 0) {
-                files = Array.from(e.dataTransfer.files);
+            if (e.dataTransfer.files.length > 0) {
+                let file = e.dataTransfer.files[0];
+                await processFile(file);
             }
-
-            let sqliteFile = files.find(f => f.name.toLowerCase().endsWith('.sqlite')) || files[0];
-            if (sqliteFile) await processFile(sqliteFile);
         });
 
         fileInput.addEventListener('change', async (e) => {
-            const files = Array.from(e.target.files);
-            let sqliteFile = files.find(f => f.name.toLowerCase().endsWith('.sqlite')) || files[0];
-            if (sqliteFile) await processFile(sqliteFile);
-        });
-
-        async function traverseFileTree(item, fileList) {
-            if (item.isFile) {
-                return new Promise((resolve) => {
-                    item.file((file) => { fileList.push(file); resolve(); });
-                });
-            } else if (item.isDirectory) {
-                const dirReader = item.createReader();
-                const entries = await new Promise((resolve) => dirReader.readEntries(resolve));
-                for (const entry of entries) {
-                    await traverseFileTree(entry, fileList);
-                }
+            if (e.target.files.length > 0) {
+                await processFile(e.target.files[0]);
             }
-        }
+        });
 
         async function processFile(file) {
             if (!SQL) return;
@@ -179,8 +150,8 @@
 
                 detectSchema();
                 if (!schemaInfo.msgTable) {
-                    alert('メッセージテーブルが見つかりませんでした。別のSQLiteファイルをお試しください。');
-                    document.getElementById('status-msg').innerText = 'エラー: 有効なテーブルが見つかりません';
+                    alert('メッセージテーブルが見つかりませんでした。別の .sqlite ファイルをお試しください。');
+                    document.getElementById('status-msg').innerText = 'エラー: メッセージデータが見つかりません';
                     return;
                 }
 

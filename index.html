@@ -8,69 +8,41 @@
     <style>
         * { box-sizing: border-box; }
         body {
-            margin: 0;
-            padding: 0;
+            margin: 0; padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", sans-serif;
-            background-color: #f0f2f5;
-            color: #1c1e21;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
+            background-color: #f0f2f5; color: #1c1e21; height: 100vh;
+            display: flex; flex-direction: column;
         }
         header {
-            background-color: #00c300;
-            color: white;
-            padding: 12px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            background-color: #00c300; color: white; padding: 12px 20px;
+            display: flex; justify-content: space-between; align-items: center;
         }
         header h1 { font-size: 18px; margin: 0; }
         .btn {
-            border: none;
-            padding: 8px 16px;
-            font-weight: bold;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 13px;
+            border: none; padding: 8px 16px; font-weight: bold; border-radius: 20px;
+            cursor: pointer; font-size: 13px;
         }
         .btn-print { background-color: white; color: #00c300; display: none; }
         .btn-reset { background-color: rgba(255,255,255,0.2); color: white; display: none; }
 
         #drop-zone {
-            margin: 30px auto;
-            width: 90%;
-            max-width: 800px;
-            padding: 50px 20px;
-            border: 2px dashed #00c300;
-            border-radius: 12px;
-            background: white;
-            text-align: center;
-            cursor: pointer;
+            margin: 30px auto; width: 90%; max-width: 800px; padding: 40px 20px;
+            border: 2px dashed #00c300; border-radius: 12px; background: white; text-align: center;
         }
+        .file-select-btns { margin-top: 15px; display: flex; justify-content: center; gap: 10px; }
+        .file-btn { background: #00c300; color: white; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; }
+        .file-btn:hover { background: #009900; }
         #drop-zone input { display: none; }
 
         #status-msg {
-            margin: 10px auto;
-            width: 90%;
-            max-width: 800px;
-            font-size: 14px;
-            color: #333;
-            text-align: center;
-            line-height: 1.6;
+            margin: 10px auto; width: 90%; max-width: 800px; font-size: 14px;
+            color: #333; text-align: center; line-height: 1.6;
         }
 
-        #app-container {
-            display: none;
-            flex: 1;
-            overflow: hidden;
-        }
+        #app-container { display: none; flex: 1; overflow: hidden; }
         #sidebar {
-            width: 380px;
-            background: white;
-            border-right: 1px solid #ddd;
-            display: flex;
-            flex-direction: column;
+            width: 380px; background: white; border-right: 1px solid #ddd;
+            display: flex; flex-direction: column;
         }
 
         .section-box { padding: 10px 14px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0; }
@@ -84,13 +56,12 @@
         .file-badge { display: inline-block; padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; }
         .badge-db { background: #007bff; }
         .badge-wal { background: #e67e22; }
-        .badge-media { background: #28a745; }
 
         #chat-list { flex: 1; overflow-y: auto; }
         .chat-item { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; display: flex; align-items: center; gap: 12px; }
         .chat-item:hover { background-color: #f8f9fa; }
         .chat-item.active { background-color: #e6f9e6; font-weight: bold; }
-        .chat-avatar { width: 40px; height: 40px; border-radius: 50%; background: #00c300; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .chat-avatar { width: 40px; height: 40px; border-radius: 50%; background: #00c300; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; }
         .chat-info-body { flex: 1; min-width: 0; }
         .chat-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .chat-meta { font-size: 11px; color: #777; display: flex; justify-content: space-between; margin-top: 3px; }
@@ -113,9 +84,7 @@
         .me .bubble { background-color: #85e249; border-top-right-radius: 2px; }
         .other .bubble { background-color: #ffffff; border-top-left-radius: 2px; }
 
-        .all-fields-container { margin-top: 6px; width: 100%; }
-        .all-fields-toggle { background: rgba(0,0,0,0.5); color: #fff; border: none; padding: 4px 8px; font-size: 10px; border-radius: 4px; cursor: pointer; }
-        .all-fields-content { display: none; background: #1e1e1e; color: #00ff66; font-family: monospace; font-size: 11px; padding: 10px; border-radius: 6px; margin-top: 4px; max-height: 350px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        .wal-warning { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 8px 12px; font-size: 11px; border-radius: 4px; margin-top: 5px; }
         .error-log { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 6px; margin-top: 10px; text-align: left; font-size: 12px; font-family: monospace; }
     </style>
 </head>
@@ -129,12 +98,21 @@
         </div>
     </header>
 
-    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <h3>📁 ここにLINEのデータフォルダ / ファイル群をドロップ</h3>
+    <div id="drop-zone">
+        <h3>📁 ここに LINE の DB ファイルまたはフォルダをドロップ</h3>
         <p style="color: #666; font-size: 13px;">
-            <code>Line.sqlite</code> / 複数アカウント / バックアップフォルダを一括読み込み・横断検索します
+            <code>Line.sqlite</code> や <code>P_Line.sqlite</code>、またはバックアップフォルダ全体に対応します
         </p>
-        <input type="file" id="file-input" webkitdirectory directory multiple>
+        <div class="file-select-btns">
+            <label class="file-btn">
+                📄 ファイルを選択 (.sqlite)
+                <input type="file" id="file-input-single" accept=".sqlite">
+            </label>
+            <label class="file-btn">
+                📁 フォルダを選択
+                <input type="file" id="file-input-dir" webkitdirectory directory multiple>
+            </label>
+        </div>
     </div>
     <div id="status-msg">ライブラリ初期化中...</div>
 
@@ -152,7 +130,7 @@
         </div>
         <div id="chat-view">
             <div style="text-align: center; color: #ffffff; margin-top: 50px;">
-                左側のリストからトークルームを選択するか、上部の検索窓から検索してください
+                左側のリストからトークルームを選択してください
             </div>
         </div>
     </div>
@@ -160,37 +138,36 @@
     <script>
         let accounts = [];
         let currentAccount = null;
-        let isMeReversed = false;
-        let activeChatParams = null;
         let allDiscoveredChats = [];
         let currentSearchQuery = '';
         let debugLogs = [];
 
-        let detectedRegistry = { databases: [], walShm: [], media: [], configs: [] };
+        let detectedRegistry = { databases: [], walShm: [] };
         let SQL = null;
 
         const CONTENT_TYPE_MAP = {
             0: '💬 テキスト', 1: '🖼 画像', 2: '🎥 動画', 3: '🎙 音声',
             7: '📍 位置情報', 11: '🎨 スタンプ', 12: '🎴 連絡先', 13: '📓 ノート',
-            14: '📞 通話', 15: '📎 ファイル', 16: '🔗 リンク', 18: '✨ アニメスタンプ'
+            14: '📞 通話履歴', 15: '📎 ファイル', 16: '🔗 リンク', 18: '✨ アニメスタンプ'
         };
 
         initSqlJs().then(sqlEngine => {
             SQL = sqlEngine;
-            document.getElementById('status-msg').innerText = '準備完了: フォルダーまたはファイルをドロップしてください';
+            document.getElementById('status-msg').innerText = '準備完了: ファイルまたはフォルダを選択・ドロップしてください';
         }).catch(err => {
             document.getElementById('status-msg').innerHTML = `<span style="color:red;">初期化エラー: ${err.message}</span>`;
         });
 
         const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
+        const fileSingle = document.getElementById('file-input-single');
+        const fileDir = document.getElementById('file-input-dir');
 
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); });
         dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
             const items = e.dataTransfer.items;
             let filesToProcess = [];
-            document.getElementById('status-msg').innerText = 'フォルダー構造を走査中...';
+            document.getElementById('status-msg').innerText = 'ファイルを走査中...';
 
             if (items && items.length > 0) {
                 let entryPromises = [];
@@ -211,7 +188,10 @@
             if (filesToProcess.length > 0) await handleFiles(filesToProcess);
         });
 
-        fileInput.addEventListener('change', async (e) => {
+        fileSingle.addEventListener('change', async (e) => {
+            if (e.target.files.length > 0) await handleFiles(Array.from(e.target.files));
+        });
+        fileDir.addEventListener('change', async (e) => {
             if (e.target.files.length > 0) await handleFiles(Array.from(e.target.files));
         });
 
@@ -250,7 +230,7 @@
         async function handleFiles(fileList) {
             if (!SQL) return;
             const statusEl = document.getElementById('status-msg');
-            detectedRegistry = { databases: [], walShm: [], media: [], configs: [] };
+            detectedRegistry = { databases: [], walShm: [] };
             accounts = [];
             allDiscoveredChats = [];
             debugLogs = [];
@@ -262,11 +242,6 @@
                 const path = file.webkitRelativePath || file.name;
                 const sizeMB = (file.size / 1024 / 1024).toFixed(2);
 
-                if (i % 20 === 0 || i === totalFiles - 1) {
-                    statusEl.innerText = `全ファイルを走査中... (${i + 1} / ${totalFiles} 件完了)`;
-                    await new Promise(r => setTimeout(r, 0));
-                }
-
                 if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) {
                     detectedRegistry.walShm.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
@@ -274,7 +249,7 @@
 
                 if (await isSqliteHeader(file)) {
                     try {
-                        statusEl.innerText = `データベース構造解析中: ${file.name} (${sizeMB} MB)...`;
+                        statusEl.innerText = `データベース解析中: ${file.name} (${sizeMB} MB)...`;
                         await new Promise(r => setTimeout(r, 0));
                         const arrayBuffer = await file.arrayBuffer();
                         const dbInstance = new SQL.Database(new Uint8Array(arrayBuffer));
@@ -295,7 +270,7 @@
                             detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: true });
                             extractChatsFromAccount(accountObj);
                         } else {
-                            debugLogs.push(`ファイル "${file.name}" はSQLiteですが、LINEのメッセージテーブル（ZMESSAGE / chat_history等）が見つかりませんでした。検出テーブル: [${dbInfo.allTables.join(', ')}]`);
+                            debugLogs.push(`ファイル "${file.name}" はSQLiteですが、LINEメッセージテーブルが見つかりませんでした。`);
                             detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: false });
                         }
                     } catch (e) {
@@ -309,8 +284,7 @@
                 statusEl.innerHTML = `
                     <span style="color:red; font-weight:bold; font-size:15px;">有効な LINE データベースが見つかりませんでした。</span>
                     <p style="font-size:12px; color:#555; margin-top:8px;">
-                        ※ 読み込ませたファイルが暗号化されているか、<code>Line.sqlite</code> 以外のファイルである可能性があります。<br>
-                        iOSの未暗号化バックアップ（Line.sqlite）をドロップしているか確認してください。
+                        ※ 選択したファイルが Line.sqlite や P_Line.sqlite であるか確認してください。
                     </p>
                     ${logHtml}`;
                 return;
@@ -325,7 +299,7 @@
             renderRegistrySummary();
 
             const selectEl = document.getElementById('account-select');
-            selectEl.innerHTML = '<option value="all">全ファイルを統合して横断表示</option>';
+            selectEl.innerHTML = accounts.length > 1 ? '<option value="all">全ファイルを統合して表示</option>' : '';
             accounts.forEach((acc, index) => {
                 const option = document.createElement('option');
                 option.value = index;
@@ -339,16 +313,21 @@
 
         function renderRegistrySummary() {
             const summaryEl = document.getElementById('file-summary');
+            let walWarn = detectedRegistry.walShm.length > 0 
+                ? `<div class="wal-warning">⚠️ WAL差分データ (${detectedRegistry.walShm.length}件) が含まれています。最新メッセージが表示されない場合はDB Browserで事前統合を行ってください。</div>` 
+                : '';
+
             summaryEl.innerHTML = `
-                <div style="font-weight:bold; margin-bottom:4px; color:#111;">🔍 自動検知された関連ファイル群:</div>
+                <div style="font-weight:bold; margin-bottom:4px; color:#111;">🔍 検知されたファイル:</div>
                 <div><span class="file-badge badge-db">DB</span> ${detectedRegistry.databases.filter(d=>d.isValidLineDb).length}件 | <span class="file-badge badge-wal">WAL</span> ${detectedRegistry.walShm.length}件</div>
+                ${walWarn}
             `;
         }
 
         function analyzeDatabase(db) {
             let info = { 
                 allTables: [],
-                msgTable: null, msgCols: [], textCol: null, extraCol: null, timeCol: null, isMeCol: null, chatCol: null, senderCol: null, typeCol: null,
+                msgTable: null, msgCols: [], textCols: [], timeCol: null, isMeCol: null, chatCol: null, senderCol: null, typeCol: null,
                 chatTable: null, userTable: null, userMap: {}, chatMap: {}
             };
 
@@ -369,17 +348,16 @@
                     return null;
                 };
 
-                // iOS/Android/PC版のテーブル名候補を大幅に拡張
-                info.msgTable = findTable(['ZMESSAGE', 'Z_MESSAGE', 'CHAT_HISTORY', 'MESSAGES', 'MESSAGE', 'TALK_HISTORY', 'CHAT_HISTORY_V2']);
-                info.chatTable = findTable(['ZCHAT', 'Z_CHAT', 'CHATS', 'CHAT_ROOMS', 'ROOMS', 'CHAT_MEMBER']);
-                info.userTable = findTable(['ZUSER', 'Z_USER', 'ZCONTACT', 'Z_CONTACT', 'USERS', 'CONTACTS', 'FRIENDS', 'BUDDY']);
+                info.msgTable = findTable(['ZMESSAGE', 'Z_MESSAGE', 'CHAT_HISTORY', 'MESSAGES', 'MESSAGE', 'TALK_HISTORY']);
+                info.chatTable = findTable(['ZCHAT', 'Z_CHAT', 'CHATS', 'CHAT_ROOMS', 'ROOMS']);
+                info.userTable = findTable(['ZUSER', 'Z_USER', 'ZCONTACT', 'Z_CONTACT', 'USERS', 'CONTACTS', 'FRIENDS']);
 
                 if (info.msgTable) {
-                    const colsRes = db.exec(`PRAGMA table_info(${info.msgTable})`);
+                    const colsRes = db.exec(`PRAGMA table_info("${info.msgTable}")`);
                     if (colsRes.length) {
                         info.msgCols = colsRes[0].values.map(c => c[1]);
                         const cUpper = info.msgCols.map(c => c.toUpperCase());
-                        
+
                         const findCol = (candidates) => {
                             for (let cand of candidates) {
                                 let idx = cUpper.indexOf(cand.toUpperCase());
@@ -388,16 +366,15 @@
                             return info.msgCols.find(c => candidates.some(cand => c.toUpperCase().includes(cand.toUpperCase())));
                         };
 
-                        info.textCol = findCol(['ZTEXT', 'TEXT', 'ZCONTENT', 'CONTENT', 'BODY', 'MESSAGE']);
-                        info.extraCol = findCol(['ZEXTRA', 'EXTRA', 'ZATTACHMENT', 'ATTACHMENT', 'ZMETADATA']);
-                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE', 'CREATED_AT']);
-                        info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'IS_OUT', 'FROM_ME']);
-                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'ROOM_ID', 'MID']);
-                        info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID', 'ZFROM', 'SENDER']);
-                        info.typeCol = findCol(['ZCONTENTTYPE', 'ZTYPE', 'CONTENT_TYPE', 'TYPE', 'ATTRIBUTES']);
+                        info.textCols = info.msgCols.filter(c => /^ZTEXT$/i.test(c) || /^ZCONTENT$/i.test(c) || /^ZBODY$/i.test(c) || /TEXT/i.test(c));
+                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE']);
+                        info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'IS_OUT']);
+                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'ROOM_ID']);
+                        info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID']);
+                        info.typeCol = findCol(['ZCONTENTTYPE', 'ZTYPE', 'CONTENT_TYPE', 'TYPE']);
                     }
                 }
-            } catch (e) { console.error("DB分析エラー:", e); }
+            } catch (e) { console.error("DB構造解析エラー:", e); }
             return info;
         }
 
@@ -405,20 +382,21 @@
             info.userMap = {};
             info.chatMap = {};
 
+            // 1. ZUSER / ZCONTACT 解析
             if (info.userTable) {
                 try {
-                    const colsRes = db.exec(`PRAGMA table_info(${info.userTable})`);
+                    const colsRes = db.exec(`PRAGMA table_info("${info.userTable}")`);
                     if (colsRes.length) {
                         const cols = colsRes[0].values.map(c => c[1]);
-                        const res = db.exec(`SELECT * FROM ${info.userTable}`);
+                        const res = db.exec(`SELECT * FROM "${info.userTable}"`);
                         if (res.length && res[0].values) {
-                            const nameCandidates = ['ZCUSTOMNAME', 'ZNAME', 'ZDISPLAYNAME', 'ZNICKNAME', 'NAME', 'DISPLAY_NAME'];
-                            const idCandidates = ['Z_PK', 'ROWID', 'ZMID', 'MID', 'ZUSERID', 'USER_ID', 'ID'];
+                            const nameCandidates = ['ZCUSTOMNAME', 'ZNAME', 'ZDISPLAYNAME', 'ZNICKNAME', 'NAME'];
+                            const idCandidates = ['Z_PK', 'ROWID', 'ZMID', 'MID', 'ZUSERID', 'ID'];
 
                             res[0].values.forEach(row => {
                                 let foundName = '';
                                 for (let nc of nameCandidates) {
-                                    let idx = cols.findIndex(c => c.toUpperCase() === nc);
+                                    let idx = cols.findIndex(c => c.toUpperCase() === nc.toUpperCase());
                                     if (idx !== -1 && row[idx] && String(row[idx]).trim() !== '') {
                                         foundName = String(row[idx]).trim();
                                         break;
@@ -426,13 +404,46 @@
                                 }
                                 if (foundName) {
                                     idCandidates.forEach(ic => {
-                                        let idx = cols.findIndex(c => c.toUpperCase() === ic);
+                                        let idx = cols.findIndex(c => c.toUpperCase() === ic.toUpperCase());
                                         if (idx !== -1 && row[idx] !== null && row[idx] !== undefined) {
-                                            const key = String(row[idx]).trim();
-                                            if (key) info.userMap[key] = foundName;
+                                            info.userMap[String(row[idx]).trim()] = foundName;
                                         }
                                     });
                                 }
+                            });
+                        }
+                    }
+                } catch(e) {}
+            }
+
+            // 2. ZCHAT 解析 (グループ・トーク部屋名)
+            if (info.chatTable) {
+                try {
+                    const colsRes = db.exec(`PRAGMA table_info("${info.chatTable}")`);
+                    if (colsRes.length) {
+                        const cols = colsRes[0].values.map(c => c[1]);
+                        const res = db.exec(`SELECT * FROM "${info.chatTable}"`);
+                        if (res.length && res[0].values) {
+                            const nameCandidates = ['ZNAME', 'ZTITLE', 'NAME', 'TITLE'];
+                            const idCandidates = ['Z_PK', 'ROWID', 'ZMID', 'MID', 'ZCHATID'];
+
+                            res[0].values.forEach(row => {
+                                let foundName = '';
+                                for (let nc of nameCandidates) {
+                                    let idx = cols.findIndex(c => c.toUpperCase() === nc.toUpperCase());
+                                    if (idx !== -1 && row[idx] && String(row[idx]).trim() !== '') {
+                                        foundName = String(row[idx]).trim();
+                                        break;
+                                    }
+                                }
+                                idCandidates.forEach(ic => {
+                                    let idx = cols.findIndex(c => c.toUpperCase() === ic.toUpperCase());
+                                    if (idx !== -1 && row[idx] !== null && row[idx] !== undefined) {
+                                        const key = String(row[idx]).trim();
+                                        if (foundName) info.chatMap[key] = foundName;
+                                        else if (info.userMap[key]) info.chatMap[key] = info.userMap[key];
+                                    }
+                                });
                             });
                         }
                     }
@@ -448,24 +459,25 @@
 
                 const query = `
                     SELECT 
-                        m.${chatCol} as chat_id,
+                        m."${chatCol}" as chat_id,
                         COUNT(m.rowid) as msg_count,
-                        MAX(m.${timeCol}) as last_time
-                    FROM ${info.msgTable} m
-                    WHERE m.${chatCol} IS NOT NULL
-                    GROUP BY m.${chatCol}
+                        MAX(m."${timeCol}") as last_time
+                    FROM "${info.msgTable}" m
+                    WHERE m."${chatCol}" IS NOT NULL
+                    GROUP BY m."${chatCol}"
                 `;
 
                 const res = db.exec(query);
                 if (res.length && res[0].values) {
                     res[0].values.forEach(row => {
                         const [chatId, count, lastTime] = row;
-                        let resolvedName = info.chatMap[chatId] || info.userMap[chatId] || `トーク相手 (${chatId})`;
+                        const key = String(chatId).trim();
+                        let resolvedName = info.chatMap[key] || info.userMap[key] || `トークルーム (ID: ${key})`;
                         
                         allDiscoveredChats.push({
                             accountId: id,
                             fileName: fileName,
-                            chatId: chatId,
+                            chatId: key,
                             chatName: resolvedName,
                             msgCount: count,
                             lastTime: lastTime
@@ -486,25 +498,28 @@
         }
 
         function formatTimestamp(ts) {
-            if (!ts || isNaN(ts)) return '日時不明';
+            if (!ts || isNaN(ts)) return '';
             let numTs = Number(ts);
-            if (numTs <= 0) return '日時不明';
+            if (numTs <= 0) return '';
 
             let date;
             if (numTs > 1000000000000) date = new Date(numTs);
-            else if (numTs > 100000000) {
-                if (numTs > 946684800) date = new Date(numTs * 1000);
-                else date = new Date(978307200000 + numTs * 1000);
-            } else date = new Date(978307200000 + numTs * 1000);
+            else if (numTs > 100000000) date = new Date(numTs * 1000);
+            else date = new Date(978307200000 + numTs * 1000); // CoreData 2001/1/1 起点
 
-            if (isNaN(date.getTime())) return '日時不明';
+            if (isNaN(date.getTime())) return '';
 
             return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
         }
 
         function escapeHtml(str) {
             if (!str && str !== 0) return '';
-            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         }
 
         function renderChatList() {
@@ -529,27 +544,10 @@
 
             if (listToDisplay.length === 0) {
                 chatList.innerHTML = `<div style="padding:15px; color:#888; font-size:12px; text-align:center;">
-                    ${currentSearchQuery ? `「${escapeHtml(currentSearchQuery)}」に一致するトーク相手が見つかりません` : 'トークデータがありません'}
+                    ${currentSearchQuery ? `「${escapeHtml(currentSearchQuery)}」に一致するトーク相手が見つかりません` : 'トークデータが見つかりません'}
                 </div>`;
                 return;
             }
-
-            const allItem = document.createElement('div');
-            allItem.className = 'chat-item';
-            allItem.style.background = '#eaf7ed';
-            allItem.innerHTML = `
-                <div class="chat-avatar" style="background:#007bff;">★</div>
-                <div class="chat-info-body">
-                    <div class="chat-name">全トーク履歴（統合表示）</div>
-                    <div class="chat-meta"><span>全メッセージを一括表示</span></div>
-                </div>
-            `;
-            allItem.onclick = () => {
-                document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
-                allItem.classList.add('active');
-                loadMessages(null, '全ファイル統合トーク履歴', '', 0, null);
-            };
-            chatList.appendChild(allItem);
 
             listToDisplay.forEach(itemData => {
                 const initial = itemData.chatName.charAt(0).toUpperCase();
@@ -561,7 +559,7 @@
                     <div class="chat-info-body">
                         <div class="chat-name">${escapeHtml(itemData.chatName)}</div>
                         <div class="chat-meta">
-                            <span>${itemData.msgCount} 件</span>
+                            <span>${itemData.msgCount} 件のメッセージ</span>
                             <span style="font-size:10px; background:#e0e0e0; padding:1px 4px; border-radius:3px;">${escapeHtml(itemData.fileName)}</span>
                         </div>
                     </div>
@@ -569,77 +567,86 @@
                 item.onclick = () => {
                     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
                     item.classList.add('active');
-                    loadMessages(itemData.chatId, itemData.chatName, String(itemData.chatId), itemData.msgCount, itemData.accountId);
+                    loadMessages(itemData.chatId, itemData.chatName, itemData.accountId);
                 };
                 chatList.appendChild(item);
             });
         }
 
-        function loadMessages(chatId, chatName, chatMid, totalMsgCount, targetAccountId = null) {
-            activeChatParams = [chatId, chatName, chatMid, totalMsgCount, targetAccountId];
+        function loadMessages(chatId, chatName, targetAccountId) {
             const chatView = document.getElementById('chat-view');
-
-            let targetAccs = targetAccountId !== null ? [accounts[targetAccountId]] : (currentAccount !== null ? [currentAccount] : accounts);
-            const isAllMode = (chatId === null);
+            let targetAcc = accounts[targetAccountId];
 
             chatView.innerHTML = `
                 <div class="chat-header-info">
-                    <h2>👤 ${escapeHtml(chatName)}</h2>
-                    <div style="font-size:12px; color:#555;">
-                        ${!isAllMode ? `<span>ID: <strong>${escapeHtml(chatMid)}</strong> | </span>` : ''}
-                        <span>対象ファイル: <strong>${targetAccs.map(a => a.fileName).join(', ')}</strong></span>
+                    <h2>💬 ${escapeHtml(chatName)}</h2>
+                    <div style="font-size:12px; color:#555; margin-top:4px;">
+                        <span>トークID: <strong>${escapeHtml(chatId)}</strong> | </span>
+                        <span>ソース: <strong>${escapeHtml(targetAcc.fileName)}</strong></span>
                     </div>
                 </div>
             `;
 
-            let allRowsExtracted = [];
+            const { db, info } = targetAcc;
+            let whereClause = `WHERE CAST(m."${info.chatCol}" AS TEXT) = '${String(chatId).replace(/'/g, "''")}'`;
+            const query = `SELECT * FROM "${info.msgTable}" m ${whereClause} ORDER BY "${info.timeCol || 'ROWID'}" ASC`;
 
-            targetAccs.forEach(acc => {
-                const { db, info } = acc;
-                let whereClause = (!isAllMode && info.chatCol) ? `WHERE m.${info.chatCol} = '${String(chatId).replace(/'/g, "''")}'` : "";
+            try {
+                const res = db.exec(query);
+                if (res.length && res[0].values) {
+                    const columns = res[0].columns;
+                    const timeIdx = columns.indexOf(info.timeCol);
+                    const isMeIdx = columns.indexOf(info.isMeCol);
+                    const senderIdx = columns.indexOf(info.senderCol);
+                    const typeIdx = columns.indexOf(info.typeCol);
 
-                try {
-                    const res = db.exec(`SELECT m.* FROM ${info.msgTable} m ${whereClause}`);
-                    if (res.length && res[0].values) {
-                        const columns = res[0].columns;
-                        const textIdx = columns.indexOf(info.textCol);
-                        const timeIdx = columns.indexOf(info.timeCol);
-                        const isMeIdx = columns.indexOf(info.isMeCol);
+                    res[0].values.forEach(row => {
+                        let textContent = '';
+                        for (let colName of info.textCols) {
+                            let idx = columns.indexOf(colName);
+                            if (idx !== -1 && row[idx]) {
+                                textContent = String(row[idx]);
+                                break;
+                            }
+                        }
 
-                        res[0].values.forEach(row => {
-                            allRowsExtracted.push({
-                                row, columns,
-                                textIdx, timeIdx, isMeIdx,
-                                ts: timeIdx !== -1 ? row[timeIdx] : 0
-                            });
-                        });
-                    }
-                } catch (e) { console.warn("メッセージ抽出失敗:", e); }
-            });
+                        if (!textContent) {
+                            let typeVal = typeIdx !== -1 ? row[typeIdx] : null;
+                            textContent = (typeVal !== null && CONTENT_TYPE_MAP[typeVal]) ? CONTENT_TYPE_MAP[typeVal] : '[スタンプ / メディア / システム通知]';
+                        }
 
-            allRowsExtracted.sort((a, b) => a.ts - b.ts);
+                        let isMe = false;
+                        if (isMeIdx !== -1) {
+                            let val = row[isMeIdx];
+                            isMe = (val === 1 || val === '1' || val === true);
+                        }
 
-            allRowsExtracted.forEach((msgObj) => {
-                const { row, columns, textIdx, timeIdx, isMeIdx, ts } = msgObj;
-                const mainText = textIdx !== -1 ? row[textIdx] : '';
-                const isMeVal = isMeIdx !== -1 ? row[isMeIdx] : null;
-                
-                let isMeBool = (isMeVal === 1 || isMeVal === '1' || isMeVal === true);
-                const timeStr = formatTimestamp(ts);
+                        let senderName = isMe ? '自分' : chatName;
+                        if (!isMe && senderIdx !== -1 && row[senderIdx]) {
+                            let senderId = String(row[senderIdx]).trim();
+                            if (info.userMap[senderId]) senderName = info.userMap[senderId];
+                        }
 
-                const msgRow = document.createElement('div');
-                msgRow.className = `msg-row ${isMeBool ? 'me' : 'other'}`;
-                msgRow.innerHTML = `
-                    <div class="msg-header-line">
-                        <span class="msg-sender-badge">${isMeBool ? '自分' : escapeHtml(chatName)}</span>
-                        <span class="msg-timestamp">${timeStr}</span>
-                    </div>
-                    <div class="bubble-container">
-                        <div class="bubble">${escapeHtml(mainText || '[メディア/システムメッセージ]')}</div>
-                    </div>
-                `;
-                chatView.appendChild(msgRow);
-            });
+                        let timeVal = timeIdx !== -1 ? row[timeIdx] : null;
+                        let timeStr = formatTimestamp(timeVal);
+
+                        const msgRow = document.createElement('div');
+                        msgRow.className = `msg-row ${isMe ? 'me' : 'other'}`;
+                        msgRow.innerHTML = `
+                            <div class="msg-header-line">
+                                <span class="msg-sender-badge">${escapeHtml(senderName)}</span>
+                                <span class="msg-timestamp">${timeStr}</span>
+                            </div>
+                            <div class="bubble-container">
+                                <div class="bubble">${escapeHtml(textContent).replace(/\n/g, '<br>')}</div>
+                            </div>
+                        `;
+                        chatView.appendChild(msgRow);
+                    });
+                }
+            } catch (e) {
+                chatView.innerHTML += `<div style="color:red; background:white; padding:10px; border-radius:6px;">メッセージ表示エラー: ${e.message}</div>`;
+            }
         }
     </script>
 </body>

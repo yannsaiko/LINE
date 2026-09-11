@@ -131,9 +131,7 @@
             display: flex; flex-direction: column; gap: 12px;
         }
 
-        .pagination-bar {
-            text-align: center; padding: 8px; margin-bottom: 10px;
-        }
+        .pagination-bar { text-align: center; padding: 8px; margin-bottom: 10px; }
         .pagination-btn {
             background: rgba(255,255,255,0.9); border: none;
             padding: 6px 16px; border-radius: 15px; font-size: 12px;
@@ -183,10 +181,10 @@
     <div id="status-bar">エンジン初期化中...</div>
 
     <div id="drop-zone">
-        <h2>📁 データベースファイルを読み込む</h2>
+        <h2>📁 データベースファイル/フォルダをドロップ</h2>
         <p style="color: #666; font-size: 13px; margin-top: 8px;">
-            <code>Line.sqlite</code> (iOS) または <code>Talk.sqlite</code> / <code>naver_line</code> (Android) を直接ドロップ<br>
-            ※ 関連する <code>-wal</code> ファイルも同時に選択すると最新のトークまで復元されます
+            <code>Line.sqlite</code> (iOS) または <code>Talk.sqlite</code> / <code>naver_line</code> (Android) を含むフォルダ・ファイルをドロップ<br>
+            ※ 関連する <code>-wal</code> ファイルも同時に読み込まれます
         </p>
         <div class="file-inputs">
             <label class="file-label">
@@ -214,9 +212,7 @@
         </div>
     </div>
 
-    <!-- Web Worker Script Inline Generation -->
     <script>
-        // バックグラウンドでSQLiteを安全・高速に処理するWorkerコード
         const workerCode = `
             importScripts('https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js');
 
@@ -235,7 +231,7 @@
                         });
                         self.postMessage({ action: 'ready' });
                     } catch (err) {
-                        self.postMessage({ action: 'error', error: err.message });
+                        self.postMessage({ action: 'error', error: 'WebWorker初期化エラー: ' + err.message });
                     }
                 } 
                 else if (action === 'loadDB') {
@@ -256,7 +252,7 @@
 
                         schema = detectSchema(db);
                         if (!schema.msgTable) {
-                            throw new Error("有効なLINEメッセージテーブルが検出できませんでした。");
+                            throw new Error("有効なLINEデータベース構造が見つかりませんでした。ファイルが暗号化されているか、LINEのDBではありません。");
                         }
 
                         loadDictionaries(db, schema);
@@ -281,7 +277,6 @@
             function detectSchema(db) {
                 const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'")[0]?.values.map(r => r[0]) || [];
                 
-                // iOS Schema (Line.sqlite)
                 if (tables.includes('ZMESSAGE')) {
                     const cols = db.exec("PRAGMA table_info(ZMESSAGE)")[0].values.map(c => c[1]);
                     return {
@@ -297,7 +292,6 @@
                         chatTable: tables.includes('ZCHAT') ? 'ZCHAT' : null
                     };
                 }
-                // Android Schema (Talk.sqlite / naver_line)
                 else if (tables.includes('chat_history')) {
                     const cols = db.exec("PRAGMA table_info(chat_history)")[0].values.map(c => c[1]);
                     return {
@@ -367,11 +361,9 @@
             function fetchMessages(db, sch, chatId, limit, offset) {
                 const safeId = String(chatId).replace(/'/g, "''");
                 
-                // トータル件数取得
                 const countQuery = \`SELECT COUNT(*) FROM "\${sch.msgTable}" WHERE CAST("\${sch.chatCol}" AS TEXT) = '\${safeId}' OR "\${sch.chatCol}" = '\${safeId}'\`;
                 const totalCount = db.exec(countQuery)[0].values[0][0];
 
-                // 該当ページメッセージ取得
                 const query = \`
                     SELECT 
                         "\${sch.textCol}", 
@@ -441,11 +433,10 @@
                 if (!ts) return '';
                 let num = Number(ts);
                 
-                // iOS Cocoa Epoch 補正 (2001-01-01基準秒)
                 if (schemaType === 'iOS' || num < 1000000000) {
                     num = 978307200000 + (num * 1000);
                 } else if (num < 100000000000) {
-                    num = num * 1000; // Unix秒をミリ秒へ
+                    num = num * 1000;
                 }
 
                 const d = new Date(num);
@@ -461,7 +452,6 @@
             }
         `;
 
-        // Worker初期化とメインUI側ロジック
         let worker = null;
         let activeChat = null;
         let allChatRooms = [];
@@ -477,10 +467,10 @@
                 const { action, payload, error } = e.data;
 
                 if (action === 'ready') {
-                    updateStatus('準備完了: DBファイルをドロップしてください');
+                    updateStatus('準備完了: データベースファイルまたはフォルダをドロップしてください');
                 } else if (action === 'error') {
-                    alert('エラーが発生しました: ' + error);
-                    updateStatus('エラー: ' + error);
+                    alert('エラー: ' + error);
+                    updateStatus('エラー発生: ' + error);
                 } else if (action === 'dbLoaded') {
                     updateStatus(`解析完了 (検出形式: ${payload.schemaType})`);
                     allChatRooms = payload.chatRooms;
@@ -503,44 +493,92 @@
             document.getElementById('status-bar').innerText = text;
         }
 
-        // Drag & Drop
+        // --- フォルダドロップ（再帰検索）の実装 ---
         const dropZone = document.getElementById('drop-zone');
         dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
         dropZone.addEventListener('drop', async e => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
-            let files = [];
-            if (e.dataTransfer.items) {
-                for (let item of e.dataTransfer.items) {
-                    if (item.kind === 'file') files.push(item.getAsFile());
+            
+            updateStatus('フォルダ/ファイルをスキャン中...');
+            const items = e.dataTransfer.items;
+            const files = [];
+
+            if (items) {
+                const entries = [];
+                for (let i = 0; i < items.length; i++) {
+                    const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+                    if (entry) entries.push(entry);
+                }
+                for (let entry of entries) {
+                    await traverseFileTree(entry, files);
                 }
             } else {
-                files = Array.from(e.dataTransfer.files);
+                files.push(...Array.from(e.dataTransfer.files));
             }
-            if (files.length) await processFiles(files);
+
+            if (files.length > 0) {
+                await processFiles(files);
+            } else {
+                alert('ファイルを取得できませんでした');
+            }
         });
+
+        async function traverseFileTree(item, fileList) {
+            return new Promise((resolve) => {
+                if (item.isFile) {
+                    item.file(file => {
+                        fileList.push(file);
+                        resolve();
+                    });
+                } else if (item.isDirectory) {
+                    const dirReader = item.createReader();
+                    dirReader.readEntries(async entries => {
+                        for (let entry of entries) {
+                            await traverseFileTree(entry, fileList);
+                        }
+                        resolve();
+                    });
+                } else {
+                    resolve();
+                }
+            });
+        }
 
         document.getElementById('file-input').addEventListener('change', e => processFiles(Array.from(e.target.files)));
         document.getElementById('dir-input').addEventListener('change', e => processFiles(Array.from(e.target.files)));
 
         async function processFiles(files) {
-            updateStatus('ファイルを解析中...');
-            let mainFile = files.find(f => f.name.endsWith('.sqlite') || f.name.includes('naver_line')) || files[0];
-            let walFile = files.find(f => f.name.endsWith('-wal'));
+            updateStatus(`検索された ${files.length} 件のファイルからデータベースを特定中...`);
+
+            // 優先順位に従ってDBファイルを検索
+            let mainFile = files.find(f => f.name.toLowerCase() === 'line.sqlite') ||
+                           files.find(f => f.name.toLowerCase() === 'talk.sqlite') ||
+                           files.find(f => f.name.toLowerCase().includes('naver_line')) ||
+                           files.find(f => f.name.endsWith('.sqlite') || f.name.endsWith('.db'));
+
+            let walFile = files.find(f => f.name.toLowerCase().endsWith('-wal'));
 
             if (!mainFile) {
-                alert('有効なデータベースファイルが見つかりません');
+                alert('フォルダ内に有効なデータベースファイル (Line.sqlite / Talk.sqlite) が見つかりませんでした。');
+                updateStatus('エラー: DBファイル未検出');
                 return;
             }
 
-            const mainBuf = await mainFile.arrayBuffer();
-            const walBuf = walFile ? await walFile.arrayBuffer() : null;
+            updateStatus(`データベース読み込み中: ${mainFile.name}...`);
 
-            worker.postMessage({
-                action: 'loadDB',
-                payload: { mainBuf, walBuf }
-            }, [mainBuf, ...(walBuf ? [walBuf] : [])]);
+            try {
+                const mainBuf = await mainFile.arrayBuffer();
+                const walBuf = walFile ? await walFile.arrayBuffer() : null;
+
+                worker.postMessage({
+                    action: 'loadDB',
+                    payload: { mainBuf, walBuf }
+                }, [mainBuf, ...(walBuf ? [walBuf] : [])]);
+            } catch (err) {
+                alert('ファイルの読み込みに失敗しました: ' + err.message);
+            }
         }
 
         function renderChatList(list) {
@@ -588,7 +626,6 @@
             updateStatus(`表示中: ${chat.name} (${messages.length} / ${totalCount} 件)`);
             const view = document.getElementById('chat-view');
             
-            // アクションボタン表示
             document.getElementById('btn-export-csv').style.display = 'inline-flex';
             document.getElementById('btn-export-txt').style.display = 'inline-flex';
             document.getElementById('btn-print').style.display = 'inline-flex';
@@ -603,7 +640,6 @@
 
             const container = document.getElementById('messages-container');
 
-            // 過去ログ読み込みボタン
             if (currentOffset > 0) {
                 const pageBar = document.createElement('div');
                 pageBar.className = 'pagination-bar';
@@ -625,7 +661,6 @@
                 container.appendChild(group);
             });
 
-            // 最下部へスクロール (初回読込時)
             if (currentOffset >= totalCount - PAGE_SIZE) {
                 container.scrollTop = container.scrollHeight;
             }
@@ -667,7 +702,6 @@
             return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        // 初期化実行
         window.onload = initWorker;
     </script>
 </body>

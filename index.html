@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LINE トーク・深層解析＆横断検索ツール</title>
-    <!-- sql-asm.js から WebAssembly版の sql-wasm.js に変更 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -67,9 +66,16 @@
         .chat-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .chat-meta { font-size: 11px; color: #777; display: flex; justify-content: space-between; margin-top: 3px; }
 
-        #chat-view { flex: 1; background: #8cabd9; padding: 20px; overflow-y: auto; }
-        .chat-header-info { background: white; padding: 16px; border-radius: 8px; border-left: 5px solid #00c300; margin-bottom: 20px; }
+        #chat-view { flex: 1; background: #8cabd9; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
+        .chat-header-info { background: white; padding: 16px; border-radius: 8px; border-left: 5px solid #00c300; margin-bottom: 20px; flex-shrink: 0; }
         
+        .load-more-btn {
+            align-self: center; margin-bottom: 15px; background: rgba(255,255,255,0.8);
+            border: none; padding: 8px 16px; border-radius: 15px; cursor: pointer;
+            font-size: 12px; font-weight: bold; color: #333;
+        }
+        .load-more-btn:hover { background: white; }
+
         .msg-row { display: flex; flex-direction: column; margin-bottom: 16px; }
         .msg-row.me { align-items: flex-end; }
         .msg-row.other { align-items: flex-start; }
@@ -89,7 +95,7 @@
         .error-log { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 12px; border-radius: 6px; margin-top: 10px; text-align: left; font-size: 12px; font-family: monospace; white-space: pre-wrap; }
 
         @media print {
-            header, #sidebar, .file-select-btns, .wal-warning { display: none !important; }
+            header, #sidebar, .file-select-btns, .wal-warning, .load-more-btn { display: none !important; }
             #app-container { display: block !important; height: auto !important; }
             #chat-view { background: white !important; color: black !important; padding: 0 !important; overflow: visible !important; }
             .bubble { border: 1px solid #ccc !important; }
@@ -132,7 +138,7 @@
                 <select id="account-select" onchange="switchAccount(this.value)"></select>
             </div>
             <div class="search-box-container">
-                <input type="text" id="global-search-input" class="search-input" placeholder="🔍 名前・ID・トーク本文を即座に検索..." oninput="handleSearchInput(this.value)">
+                <input type="text" id="global-search-input" class="search-input" placeholder="🔍 名前・IDを検索..." oninput="handleSearchInput(this.value)">
             </div>
             <div id="file-summary"></div>
             <div id="chat-list"></div>
@@ -157,13 +163,14 @@
         let detectedRegistry = { databases: [], walShm: [] };
         let SQL = null;
 
+        const RENDER_LIMIT = 1000; // 初期表示メッセージ上限
+
         const CONTENT_TYPE_MAP = {
             0: '💬 テキスト', 1: '🖼 [画像]', 2: '🎥 [動画]', 3: '🎙 [音声]',
             6: '📞 [通話]', 7: '📍 [位置情報]', 11: '🎨 [スタンプ]', 12: '🎴 [連絡先]', 13: '📓 [ノート]',
             14: '📞 [通話履歴]', 15: '📎 [ファイル]', 16: '🔗 [リンク]', 18: '✨ [アニメスタンプ]'
         };
 
-        // WebAssembly版のパス設定を追加
         initSqlJs({
             locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
         }).then(sqlEngine => {
@@ -276,7 +283,7 @@
 
                         if (isValid) {
                             const accIndex = accounts.length;
-                            const accountObj = {
+                            accounts.push({
                                 id: accIndex,
                                 fileName: file.name,
                                 filePath: path,
@@ -285,10 +292,8 @@
                                 info: dbInfo,
                                 pkToMidMap: {},
                                 midToPkMap: {}
-                            };
-                            accounts.push(accountObj);
+                            });
                         } else {
-                            // LINE関連テーブルがない非対応DBの場合はクローズしてメモリ解放
                             dbInstance.close();
                             debugLogs.push(`ファイル "${file.name}" はSQLiteですが、LINE関連テーブルが見つかりませんでした。`);
                         }
@@ -299,7 +304,7 @@
             }
 
             if (accounts.length === 0) {
-                let logHtml = debugLogs.length > 0 ? `<div class="error-log"><strong>【詳細ログ】</strong><br>${debugLogs.join('<br>')}</div>` : '';
+                let logHtml = debugLogs.length > 0 ? `<div class="error-log"><strong>【詳細ログ】</strong><br>${escapeHtml(debugLogs.join('\n'))}</div>` : '';
                 statusEl.innerHTML = `
                     <span style="color:red; font-weight:bold; font-size:15px;">有効な LINE データベースが見つかりませんでした。</span>
                     <p style="font-size:12px; color:#555; margin-top:8px;">
@@ -338,7 +343,7 @@
         function renderRegistrySummary() {
             const summaryEl = document.getElementById('file-summary');
             let walWarn = detectedRegistry.walShm.length > 0 
-                ? `<div class="wal-warning">⚠️ WAL差分データ (${detectedRegistry.walShm.length}件) が検出されました。データベースに最新トークが残っている場合は事前結合を行ってください。</div>` 
+                ? `<div class="wal-warning">⚠️ WAL差分データ (${detectedRegistry.walShm.length}件) が検出されました。最新トークが表示されない場合は事前のDB結合が必要です。</div>` 
                 : '';
 
             summaryEl.innerHTML = `
@@ -394,9 +399,7 @@
                             return null;
                         };
 
-                        info.textCols = info.msgCols.filter(c => 
-                            /TEXT|CONTENT|BODY|MESSAGE/i.test(c)
-                        );
+                        info.textCols = info.msgCols.filter(c => /TEXT|CONTENT|BODY|MESSAGE/i.test(c));
                         info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE', 'ZDATE', 'CREATEDTIME']);
                         info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'IS_OUT', 'FROM_ME']);
                         info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'ROOM_ID', 'CHAT', 'ZADDRESSBOOKID']);
@@ -596,13 +599,11 @@
             let num = Number(ts);
             if (num <= 0) return 0;
 
-            if (num > 100000000000000) return Math.floor(num / 1000);
-            if (num > 10000000000) return num;
-            if (num > 100000000) {
-                if (num > 1000000000) return num * 1000;
-                return 978307200000 + (num * 1000);
-            }
-            return 978307200000 + (num * 1000);
+            if (num > 100000000000000) return Math.floor(num / 1000); // マイクロ秒
+            if (num > 1000000000000) return num; // Unix ミリ秒
+            if (num > 100000000000) return 978307200000 + num; // iOS Cocoa ミリ秒
+            if (num > 1000000000) return num * 1000; // Unix 秒
+            return 978307200000 + (num * 1000); // iOS Cocoa 秒
         }
 
         function formatTimestamp(ts) {
@@ -739,6 +740,7 @@
             });
         }
 
+        // メモリ対策: 全カラム(SELECT *)を取得せず、軽量な特定のカラムのみ抽出
         function getMessagesFromAccount(acc, targetChatItem) {
             const { db, info, id, fileName } = acc;
             const messages = [];
@@ -765,7 +767,17 @@
                 });
 
                 const whereClause = idConditions.length > 0 ? `WHERE (${idConditions.join(' OR ')})` : '';
-                const query = `SELECT * FROM "${info.msgTable}" ${whereClause}`;
+                
+                // カラムの軽量選択 (SELECT * を回避)
+                const targetCols = [];
+                if (timeCol) targetCols.push(`"${timeCol}"`);
+                if (info.isMeCol) targetCols.push(`"${info.isMeCol}"`);
+                if (info.senderCol) targetCols.push(`"${info.senderCol}"`);
+                if (info.typeCol) targetCols.push(`"${info.typeCol}"`);
+                info.textCols.forEach(c => targetCols.push(`"${c}"`));
+
+                const selectClause = targetCols.length > 0 ? Array.from(new Set(targetCols)).join(', ') : '*';
+                const query = `SELECT ${selectClause} FROM "${info.msgTable}" ${whereClause}`;
                 
                 const res = db.exec(query);
 
@@ -904,7 +916,28 @@
                 return;
             }
 
-            allMsgs.forEach(msg => {
+            // 大量件数描画時のフリーズ防止策（最新 RENDER_LIMIT 件のみ初期表示）
+            let msgsToRender = allMsgs;
+            if (allMsgs.length > RENDER_LIMIT) {
+                const loadBtn = document.createElement('button');
+                loadBtn.className = 'load-more-btn';
+                loadBtn.innerText = `全 ${allMsgs.length} 件中、古いメッセージをさらに読み込む`;
+                loadBtn.onclick = () => {
+                    loadBtn.remove();
+                    renderMessageBatch(chatView, allMsgs.slice(0, allMsgs.length - RENDER_LIMIT), targetChat, true);
+                };
+                chatView.appendChild(loadBtn);
+                msgsToRender = allMsgs.slice(allMsgs.length - RENDER_LIMIT);
+            }
+
+            renderMessageBatch(chatView, msgsToRender, targetChat, false);
+            chatView.scrollTop = chatView.scrollHeight;
+        }
+
+        function renderMessageBatch(container, msgs, targetChat, prepend = false) {
+            const fragment = document.createDocumentFragment();
+
+            msgs.forEach(msg => {
                 const sender = msg.senderName || (msg.isMe ? '自分' : targetChat.chatName);
                 const timeStr = formatTimestamp(msg.normTime);
 
@@ -919,10 +952,19 @@
                         <div class="bubble">${escapeHtml(msg.textContent).replace(/\n/g, '<br>')}</div>
                     </div>
                 `;
-                chatView.appendChild(msgRow);
+                fragment.appendChild(msgRow);
             });
 
-            chatView.scrollTop = chatView.scrollHeight;
+            if (prepend) {
+                const header = container.querySelector('.chat-header-info');
+                if (header && header.nextSibling) {
+                    container.insertBefore(fragment, header.nextSibling);
+                } else {
+                    container.prepend(fragment);
+                }
+            } else {
+                container.appendChild(fragment);
+            }
         }
     </script>
 </body>

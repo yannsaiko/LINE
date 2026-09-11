@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴マルチビューア (メモリ軽量化版)</title>
+    <title>LINE トーク履歴マルチビューア (名前解決強化版)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f5f5f5; color: #333; }
@@ -65,7 +65,6 @@
         .highlight { background-color: #ffeb3b; padding: 1px 2px; border-radius: 2px; }
         #status-bar { background: #2d3748; color: white; font-size: 12px; padding: 6px 15px; }
     </style>
-    <!-- メモリ効率に優れたWASM版sql.jsを読み込み -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 </head>
 <body>
@@ -119,7 +118,7 @@
 
     <script>
         let SQL = null;
-        let fileMap = {}; // ファイル参照のみ保持（軽量化）
+        let fileMap = {};
         let allChatRooms = [];
         let activeChat = null;
         let rawMessages = [];
@@ -127,12 +126,8 @@
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 updateStatus('SQL.js Engine (WASM) 初期化中...');
-                if (typeof initSqlJs === 'undefined') {
-                    throw new Error("sql.js ライブラリが読み込まれていません。");
-                }
-                SQL = await initSqlJs({
-                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
-                });
+                if (typeof initSqlJs === 'undefined') throw new Error("sql.js ライブラリが読み込まれていません。");
+                SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
                 updateStatus('準備完了: ファイルまたはフォルダーをドロップしてください');
             } catch (err) {
                 updateStatus('初期化エラー: ' + err.message);
@@ -140,9 +135,7 @@
             }
         });
 
-        function updateStatus(text) {
-            document.getElementById('status-bar').innerText = text;
-        }
+        function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
 
         const dropZone = document.getElementById('drop-zone');
         dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -151,7 +144,6 @@
             e.preventDefault();
             dropZone.classList.remove('dragover');
             updateStatus('フォルダー・ファイルを解析中...');
-            
             const files = await getFilesFromDataTransfer(e.dataTransfer);
             if (files.length > 0) processFiles(files);
         });
@@ -169,10 +161,7 @@
                     if (item.kind === 'file') {
                         const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
                         if (entry) promises.push(traverseFileTree(entry, files));
-                        else {
-                            const file = item.getAsFile();
-                            if (file) files.push(file);
-                        }
+                        else { const file = item.getAsFile(); if (file) files.push(file); }
                     }
                 }
                 await Promise.all(promises);
@@ -185,20 +174,13 @@
         function traverseFileTree(item, files) {
             return new Promise((resolve) => {
                 if (item.isFile) {
-                    item.file(file => {
-                        file.fullPath = item.fullPath || file.name;
-                        files.push(file);
-                        resolve();
-                    }, () => resolve());
+                    item.file(file => { file.fullPath = item.fullPath || file.name; files.push(file); resolve(); }, () => resolve());
                 } else if (item.isDirectory) {
                     const dirReader = item.createReader();
                     const readEntries = () => {
                         dirReader.readEntries(async entries => {
                             if (!entries || entries.length === 0) resolve();
-                            else {
-                                await Promise.all(entries.map(entry => traverseFileTree(entry, files)));
-                                readEntries();
-                            }
+                            else { await Promise.all(entries.map(entry => traverseFileTree(entry, files))); readEntries(); }
                         }, () => resolve());
                     };
                     readEntries();
@@ -215,13 +197,12 @@
 
         async function processFiles(files) {
             if (!SQL) return;
-            updateStatus(`スキャン中: ${files.length} 件のファイルを順次解析中...`);
+            updateStatus(`スキャン中: ${files.length} 件のファイルを解析中...`);
             fileMap = {};
             allChatRooms = [];
 
             const fileFilterSelect = document.getElementById('file-filter');
             fileFilterSelect.innerHTML = '<option value="ALL">すべてのファイル/フォルダー</option>';
-
             let validDbCount = 0;
 
             for (let i = 0; i < files.length; i++) {
@@ -230,7 +211,6 @@
                 const displayLabel = f.webkitRelativePath || f.fullPath || f.name;
 
                 try {
-                    // 先頭16バイトのみチェックして高速判定
                     const slice = await f.slice(0, 16).arrayBuffer();
                     if (!isSqliteFile(slice)) continue;
 
@@ -241,7 +221,6 @@
 
                     if (schema.msgTable) {
                         fileMap[fileId] = { file: f, displayLabel, schema };
-
                         const opt = document.createElement('option');
                         opt.value = fileId;
                         opt.innerText = displayLabel;
@@ -252,12 +231,10 @@
                         allChatRooms.push(...rooms);
                         validDbCount++;
                     }
-
-                    // ★ メモリ即時解放
                     db.close();
                     db = null;
                 } catch (err) {
-                    console.warn("スキップ (メモリ不足またはファイル破綻):", f.name, err);
+                    console.warn("スキップ:", f.name, err);
                 }
             }
 
@@ -317,10 +294,13 @@
                         const cols = res.columns.map(c => c.toUpperCase());
                         const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID' || c === '_ID');
                         const midIdx = cols.findIndex(c => c.includes('MID'));
-                        const nameIdx = cols.findIndex(c => c.includes('NAME') || c.includes('DISPLAY') || c === 'ZCUSTOMNAME');
                         
+                        // 名前のカラム（カスタム名・表示名を優先探査）
+                        const customIdx = cols.findIndex(c => c === 'ZCUSTOMNAME' || c === 'CUSTOM_NAME');
+                        const nameIdx = cols.findIndex(c => c === 'ZNAME' || c === 'DISPLAY_NAME' || c === 'NAME');
+
                         res.values.forEach(r => {
-                            let name = nameIdx !== -1 ? r[nameIdx] : null;
+                            let name = (customIdx !== -1 && r[customIdx]) ? r[customIdx] : ((nameIdx !== -1 && r[nameIdx]) ? r[nameIdx] : null);
                             if (name) {
                                 if (pkIdx !== -1 && r[pkIdx] !== undefined) userMap[String(r[pkIdx])] = String(name);
                                 if (midIdx !== -1 && r[midIdx]) userMap[String(r[midIdx])] = String(name);
@@ -362,7 +342,29 @@
 
             return res.values.map(r => {
                 const chatId = String(r[0]);
-                let name = chatMap[chatId] || userMap[chatId] || `トーク (${chatId})`;
+                let name = chatMap[chatId];
+
+                // 1対1トーク等でZCHATのNameが無い場合、メッセージ内の相手(自分以外)の送信者IDを探して名前解決
+                if (!name || name === 'null') {
+                    try {
+                        const safeId = chatId.replace(/'/g, "''");
+                        let senderQuery = '';
+                        if (sch.isMeCol) {
+                            senderQuery = `SELECT "${sch.senderCol}" FROM "${sch.msgTable}" WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' AND ("${sch.isMeCol}" = 0 OR "${sch.isMeCol}" = '0') AND "${sch.senderCol}" IS NOT NULL AND "${sch.senderCol}" != '' LIMIT 1`;
+                        } else {
+                            senderQuery = `SELECT "${sch.senderCol}" FROM "${sch.msgTable}" WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' AND "${sch.senderCol}" IS NOT NULL AND "${sch.senderCol}" != '' LIMIT 1`;
+                        }
+                        const sRes = db.exec(senderQuery)[0];
+                        if (sRes && sRes.values && sRes.values.length > 0) {
+                            const partnerId = String(sRes.values[0][0]);
+                            if (userMap[partnerId]) name = userMap[partnerId];
+                        }
+                    } catch(e){}
+                }
+
+                if (!name && userMap[chatId]) name = userMap[chatId];
+                if (!name) name = `トーク (${chatId})`;
+
                 const dateObj = parseTimestamp(r[2]);
                 return { fileId, displayLabel, id: chatId, name, count: r[1], lastTime: dateObj ? formatDate(dateObj) : '' };
             });
@@ -413,7 +415,6 @@
             });
         }
 
-        // ★ 必要になった時だけファイルを開いてメッセージを取得
         async function loadMessagesOnDemand(chatItem) {
             updateStatus(`メッセージ読込中... (${chatItem.name})`);
             const fileObj = fileMap[chatItem.fileId];
@@ -423,7 +424,6 @@
                 const buf = await fileObj.file.arrayBuffer();
                 let db = new SQL.Database(new Uint8Array(buf));
                 const sch = fileObj.schema;
-
                 const { userMap } = loadDictionaries(db, sch);
 
                 let myMid = null;
@@ -441,8 +441,6 @@
                 `;
 
                 let res = db.exec(query)[0];
-                
-                // 読込終了後すぐにDB解放
                 db.close();
                 db = null;
 
@@ -465,7 +463,7 @@
                     }
 
                     let senderName = isMe ? '自分' : (userMap[senderId] || chatItem.name);
-                    let text = rawText || `[メディア / タイプ: ${type}]`;
+                    let text = rawText || `[スタンプ/画像/システムメッセージ]`;
                     const dateObj = parseTimestamp(rawTime);
 
                     return {

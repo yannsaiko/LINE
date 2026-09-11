@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク・全データ深層自動抽出 & 統合解析ツール</title>
+    <title>LINE トーク・全関連ファイル自動検索＆深層解析ツール</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -43,7 +43,7 @@
         #drop-zone {
             margin: 30px auto;
             width: 90%;
-            max-width: 750px;
+            max-width: 800px;
             padding: 50px 20px;
             border: 2px dashed #00c300;
             border-radius: 12px;
@@ -58,7 +58,7 @@
         #status-msg {
             margin: 10px auto;
             width: 90%;
-            max-width: 750px;
+            max-width: 800px;
             font-size: 13px;
             color: #555;
             text-align: center;
@@ -77,12 +77,13 @@
             display: flex;
             flex-direction: column;
         }
-        .account-selector-box {
+
+        .section-box {
             padding: 12px 16px;
             background: #f8f9fa;
             border-bottom: 1px solid #e0e0e0;
         }
-        .account-selector-box label {
+        .section-box label {
             display: block;
             font-size: 11px;
             color: #666;
@@ -99,14 +100,31 @@
             font-weight: bold;
             color: #333;
         }
+
         #file-summary {
-            padding: 8px 16px;
+            padding: 10px 16px;
             background: #eef2f5;
             font-size: 11px;
-            color: #444;
+            color: #333;
             border-bottom: 1px solid #ddd;
-            line-height: 1.4;
+            line-height: 1.5;
+            max-height: 180px;
+            overflow-y: auto;
         }
+        .file-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-right: 4px;
+            color: white;
+        }
+        .badge-db { background: #007bff; }
+        .badge-wal { background: #e67e22; }
+        .badge-media { background: #28a745; }
+        .badge-config { background: #6c757d; }
+
         #chat-list { flex: 1; overflow-y: auto; }
         
         .chat-item {
@@ -278,7 +296,7 @@
 <body>
 
     <header>
-        <h1>LINE トーク・全データ深層自動抽出 & 統合解析ツール</h1>
+        <h1>LINE トーク・全関連ファイル自動検索＆深層解析ツール</h1>
         <div class="header-actions">
             <button id="btn-reset" class="btn btn-reset" onclick="location.reload()">↺ 最初からやり直す</button>
             <button id="btn-print" class="btn btn-print" onclick="window.print()">🖨 印刷 (PDF保存)</button>
@@ -286,16 +304,18 @@
     </header>
 
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <h3>📁 ここにLINEデータを含むフォルダー、またはファイルをドロップ</h3>
-        <p style="color: #666; font-size: 13px;">（Line.sqlite、バックアップフォルダ、サブディレクトリ内を自動解析・網羅検索します）</p>
+        <h3>📁 ここにLINEのデータフォルダ / ファイル群をドロップ</h3>
+        <p style="color: #666; font-size: 13px;">
+            <code>Line.sqlite</code> / <code>Line.sqlite-wal</code> / <code>Line.sqlite-shm</code> / 画像・動画メディア / 添付ファイルを全自動検出・整理します
+        </p>
         <input type="file" id="file-input" webkitdirectory directory multiple>
     </div>
     <div id="status-msg">ライブラリ初期化中...</div>
 
     <div id="app-container">
         <div id="sidebar">
-            <div class="account-selector-box">
-                <label for="account-select">👤 検出されたデータベース解析結果:</label>
+            <div class="section-box">
+                <label for="account-select">🗄 検出されたメインデータベース:</label>
                 <select id="account-select" onchange="switchAccount(this.value)"></select>
             </div>
             <div id="file-summary"></div>
@@ -311,6 +331,12 @@
     <script>
         let accounts = [];
         let currentAccount = null;
+        let detectedRegistry = {
+            databases: [],
+            walShm: [],
+            media: [],
+            configs: []
+        };
         let SQL = null;
 
         const CONTENT_TYPE_MAP = {
@@ -346,7 +372,7 @@
             let filesToProcess = [];
 
             if (items && items.length > 0) {
-                document.getElementById('status-msg').innerText = '全フォルダー構造を深層スキャン中...';
+                document.getElementById('status-msg').innerText = 'フォルダー構造を全走査＆関連ファイルを自動検索中...';
                 let entryPromises = [];
                 for (let i = 0; i < items.length; i++) {
                     const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
@@ -404,48 +430,71 @@
 
         async function handleFiles(fileList) {
             if (!SQL) return;
-            document.getElementById('status-msg').innerText = 'SQLite データベース構造・テーブル群を深層解析中...';
+            document.getElementById('status-msg').innerText = '各種ファイルを識別＆分類中...';
 
-            // SQLiteファイル候補のフィルタリング
-            const targetFiles = fileList.filter(file => {
-                const name = file.name.toLowerCase();
-                if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) return false;
-                return name.includes('line') || name.endsWith('.sqlite') || name.endsWith('.db') || file.size > 10240;
-            });
-
+            detectedRegistry = { databases: [], walShm: [], media: [], configs: [] };
             accounts = [];
 
-            for (let file of targetFiles) {
+            for (let file of fileList) {
+                const name = file.name.toLowerCase();
+                const path = file.webkitRelativePath || file.name;
+                const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+
+                // 1. WAL / SHM ログファイルの検知
+                if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) {
+                    detectedRegistry.walShm.push({ name: file.name, path, size: `${sizeMB} MB` });
+                    continue;
+                }
+
+                // 2. メディア・音声・添付ファイルの検知
+                if (/\.(jpg|jpeg|png|gif|webp|mp4|mov|m4a|aud|aac|mp3|pdf|docx|zip)$/i.test(name)) {
+                    detectedRegistry.media.push({ name: file.name, path, size: `${sizeMB} MB` });
+                    continue;
+                }
+
+                // 3. 設定ファイル・バックアップXML/plistの検知
+                if (/\.(plist|xml|json|pref)$/i.test(name) || name.includes('preference')) {
+                    detectedRegistry.configs.push({ name: file.name, path, size: `${sizeMB} MB` });
+                    continue;
+                }
+
+                // 4. SQLiteデータベースの判定と深層読み込み
                 try {
                     const arrayBuffer = await file.arrayBuffer();
                     const uInt8Array = new Uint8Array(arrayBuffer);
                     
                     if (uInt8Array.length > 15) {
                         const headerStr = String.fromCharCode.apply(null, uInt8Array.subarray(0, 15));
-                        if (!headerStr.includes('SQLite format')) {
-                            continue;
+                        if (headerStr.includes('SQLite format')) {
+                            const dbInstance = new SQL.Database(uInt8Array);
+                            const dbInfo = analyzeDatabase(dbInstance);
+
+                            if (dbInfo.msgTable) {
+                                accounts.push({
+                                    fileName: file.name,
+                                    filePath: path,
+                                    fileSize: `${sizeMB} MB`,
+                                    db: dbInstance,
+                                    info: dbInfo
+                                });
+                                detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: true });
+                            } else {
+                                detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: false });
+                            }
                         }
                     }
-
-                    const dbInstance = new SQL.Database(uInt8Array);
-                    const dbInfo = analyzeDatabase(dbInstance);
-
-                    if (dbInfo.msgTable) {
-                        accounts.push({
-                            fileName: file.name,
-                            filePath: file.webkitRelativePath || file.name,
-                            fileSize: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-                            db: dbInstance,
-                            info: dbInfo
-                        });
-                    }
                 } catch (e) {
-                    console.warn(`解析スキップ (${file.name}):`, e);
+                    console.warn(`スキップ (${file.name}):`, e);
                 }
             }
 
             if (accounts.length === 0) {
-                document.getElementById('status-msg').innerHTML = '<span style="color:red;">有効な LINE データベース（Line.sqlite等）が見つかりませんでした。<br>適切なフォルダまたはファイルが選択されているかご確認ください。</span>';
+                document.getElementById('status-msg').innerHTML = `
+                    <span style="color:red; font-weight:bold;">有効な LINE データベース (Line.sqlite等) が見つかりませんでした。</span><br>
+                    <span style="font-size:12px; color:#666;">
+                        検知されたファイル: DB: ${detectedRegistry.databases.length}件 / WAL: ${detectedRegistry.walShm.length}件 / メディア: ${detectedRegistry.media.length}件<br>
+                        正しいフォルダまたは Line.sqlite が含まれているか再度ご確認ください。
+                    </span>`;
                 return;
             }
 
@@ -454,6 +503,8 @@
             document.getElementById('app-container').style.display = 'flex';
             document.getElementById('btn-print').style.display = 'block';
             document.getElementById('btn-reset').style.display = 'block';
+
+            renderRegistrySummary();
 
             const selectEl = document.getElementById('account-select');
             selectEl.innerHTML = '';
@@ -465,6 +516,17 @@
             });
 
             switchAccount(0);
+        }
+
+        function renderRegistrySummary() {
+            const summaryEl = document.getElementById('file-summary');
+            summaryEl.innerHTML = `
+                <div style="font-weight:bold; margin-bottom:6px; color:#111;">🔍 自動検知された関連ファイル群:</div>
+                <div><span class="file-badge badge-db">DB</span> メインDB: <strong>${detectedRegistry.databases.filter(d=>d.isValidLineDb).length}</strong> 件</div>
+                <div><span class="file-badge badge-wal">WAL</span> キャッシュ(WAL/SHM): <strong>${detectedRegistry.walShm.length}</strong> 件</div>
+                <div><span class="file-badge badge-media">MEDIA</span> メディア・添付: <strong>${detectedRegistry.media.length}</strong> 件</div>
+                <div><span class="file-badge badge-config">CFG</span> 設定・構成ファイル: <strong>${detectedRegistry.configs.length}</strong> 件</div>
+            `;
         }
 
         function analyzeDatabase(db) {
@@ -525,9 +587,6 @@
         function switchAccount(index) {
             currentAccount = accounts[index];
             if (!currentAccount) return;
-            
-            const summaryEl = document.getElementById('file-summary');
-            summaryEl.innerHTML = `📄 パス: <strong>${escapeHtml(currentAccount.filePath)}</strong><br>📊 検出テーブル数: ${currentAccount.info.allTables.length} 個`;
 
             document.getElementById('chat-view').innerHTML = `
                 <div style="text-align: center; color: #ffffff; margin-top: 50px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">
@@ -625,7 +684,7 @@
                     return;
                 }
 
-                // 全トーク一括抽出用ボタン
+                // 全トーク一括抽出ボタン
                 const allItem = document.createElement('div');
                 allItem.className = 'chat-item all-chats-item';
                 allItem.innerHTML = `

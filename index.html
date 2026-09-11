@@ -306,7 +306,7 @@
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
         <h3>📁 ここにLINEのデータフォルダ / ファイル群をドロップ</h3>
         <p style="color: #666; font-size: 13px;">
-            <code>Line.sqlite</code> / <code>Line.sqlite-wal</code> / <code>Line.sqlite-shm</code> / 画像・動画メディア / 添付ファイルを全自動検出・整理します
+            <code>Line.sqlite</code> / <code>Line.sqlite-wal</code> / <code>Line.sqlite-shm</code> / 画像・動画メディア / 添付ファイルを全自動検出・整理します（何層重なったフォルダーでも深層探索）
         </p>
         <input type="file" id="file-input" webkitdirectory directory multiple>
     </div>
@@ -372,7 +372,7 @@
             let filesToProcess = [];
 
             if (items && items.length > 0) {
-                document.getElementById('status-msg').innerText = 'フォルダー構造を全走査＆関連ファイルを自動検索中...';
+                document.getElementById('status-msg').innerText = 'フォルダー構造を最深部まで自動検索中...';
                 let entryPromises = [];
                 for (let i = 0; i < items.length; i++) {
                     const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
@@ -400,32 +400,37 @@
             }
         });
 
-        async function traverseFileTree(item) {
-            return new Promise((resolve) => {
-                if (item.isFile) {
-                    item.file(file => resolve([file]));
-                } else if (item.isDirectory) {
-                    let dirReader = item.createReader();
-                    let entries = [];
-                    let readEntries = () => {
-                        dirReader.readEntries(async (results) => {
-                            if (results.length === 0) {
-                                let innerPromises = entries.map(e => traverseFileTree(e));
-                                let nestedArrays = await Promise.all(innerPromises);
-                                let flat = [];
-                                nestedArrays.forEach(a => flat.push(...a));
-                                resolve(flat);
-                            } else {
-                                entries.push(...results);
-                                readEntries();
-                            }
-                        }, () => resolve([]));
-                    };
-                    readEntries();
-                } else {
-                    resolve([]);
+        // 階層がいくら重なっていても安全・確実に走査するキュー（スタック）方式の深層走査関数
+        async function traverseFileTree(topEntry) {
+            const files = [];
+            const queue = [topEntry];
+
+            while (queue.length > 0) {
+                const entry = queue.shift();
+                if (entry.isFile) {
+                    await new Promise((resolve) => {
+                        entry.file(
+                            file => { files.push(file); resolve(); },
+                            err => { console.warn('ファイル読み込み失敗:', err); resolve(); }
+                        );
+                    });
+                } else if (entry.isDirectory) {
+                    const dirReader = entry.createReader();
+                    let batch = [];
+                    do {
+                        batch = await new Promise((resolve) => {
+                            dirReader.readEntries(
+                                entries => resolve(entries),
+                                err => { console.warn('ディレクトリ読み込み失敗:', err); resolve([]); }
+                            );
+                        });
+                        for (let child of batch) {
+                            queue.push(child);
+                        }
+                    } while (batch.length > 0);
                 }
-            });
+            }
+            return files;
         }
 
         async function handleFiles(fileList) {

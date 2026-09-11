@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク・全関連ファイル自動検索＆深層解析ツール</title>
+    <title>LINE トーク・全関連ファイル自動検索＆深層解析ツール (修正版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -400,7 +400,6 @@
             }
         });
 
-        // 階層がいくら重なっていても安全・確実に走査するキュー（スタック）方式の深層走査関数
         async function traverseFileTree(topEntry) {
             const files = [];
             const queue = [topEntry];
@@ -435,7 +434,7 @@
 
         async function handleFiles(fileList) {
             if (!SQL) return;
-            document.getElementById('status-msg').innerText = '各種ファイルを識別＆分類中...';
+            document.getElementById('status-msg').innerText = '各種ファイルを識別＆深層解析中...';
 
             detectedRegistry = { databases: [], walShm: [], media: [], configs: [] };
             accounts = [];
@@ -491,11 +490,16 @@
 
             if (accounts.length === 0) {
                 document.getElementById('status-msg').innerHTML = `
-                    <span style="color:red; font-weight:bold;">有効な LINE データベース (Line.sqlite等) が見つかりませんでした。</span><br>
-                    <span style="font-size:12px; color:#666;">
-                        検知されたファイル: DB: ${detectedRegistry.databases.length}件 / WAL: ${detectedRegistry.walShm.length}件 / メディア: ${detectedRegistry.media.length}件<br>
-                        正しいフォルダまたは Line.sqlite が含まれているか再度ご確認ください。
-                    </span>`;
+                    <span style="color:red; font-weight:bold; font-size:15px;">有効な LINE データベース (Line.sqlite等) が見つかりませんでした。</span><br><br>
+                    <div style="font-size:12px; color:#444; text-align:left; background:#fff; padding:15px; border-radius:8px; border:1px solid #ffcccc;">
+                        <strong>🔍 検出状況:</strong> SQLite DB: ${detectedRegistry.databases.length}件 / WALキャッシュ: ${detectedRegistry.walShm.length}件 / メディア: ${detectedRegistry.media.length}件<br><br>
+                        <strong>考えられる原因:</strong>
+                        <ul style="margin:5px 0 0 20px; padding:0;">
+                            <li>LINEのトークデータが含まれていない別のSQLiteファイルをドロップしている</li>
+                            <li>iTunes/Finderバックアップ時に「ローカルバックアップを暗号化」にチェックが入っていたため、ファイル自体が暗号化されている</li>
+                            <li>テキストファイル（<code>[LINE] 〇〇とのトーク.txt</code>）をドロップしている</li>
+                        </ul>
+                    </div>`;
                 return;
             }
 
@@ -530,6 +534,7 @@
             `;
         }
 
+        // 高度化されたデータベーススキーマ解読関数
         function analyzeDatabase(db) {
             let info = { 
                 allTables: [],
@@ -539,16 +544,45 @@
             };
 
             try {
-                const res = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
+                // テーブルだけでなく VIEW も取得対象に含める
+                const res = db.exec("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')");
                 if (!res.length) return info;
                 info.allTables = res[0].values.map(r => r[0]);
 
-                const findTable = (names) => info.allTables.find(t => names.some(n => t.toUpperCase() === n.toUpperCase())) ||
-                                            info.allTables.find(t => names.some(n => t.toUpperCase().includes(n.toUpperCase())));
+                const findTable = (candidates) => {
+                    for (let cand of candidates) {
+                        let match = info.allTables.find(t => t.toUpperCase() === cand.toUpperCase());
+                        if (match) return match;
+                    }
+                    for (let cand of candidates) {
+                        let match = info.allTables.find(t => t.toUpperCase().includes(cand.toUpperCase()));
+                        if (match) return match;
+                    }
+                    return null;
+                };
 
-                info.msgTable = findTable(['ZMESSAGE', 'messages', 'chat_history', 'message']);
-                info.chatTable = findTable(['ZCHAT', 'chats', 'chat_rooms', 'chat']);
-                info.userTable = findTable(['ZUSER', 'ZCONTACT', 'users', 'contacts', 'friends']);
+                // 各OS/パターンのメッセージテーブル候補
+                info.msgTable = findTable(['ZMESSAGE', 'Z_MESSAGE', 'CHAT_HISTORY', 'MESSAGES', 'MESSAGE', 'CHAT_MESSAGES', 'TALK_HISTORY', 'MSG']);
+                info.chatTable = findTable(['ZCHAT', 'Z_CHAT', 'CHATS', 'CHAT_ROOMS', 'ROOMS', 'CHAT', 'TALK_ROOM']);
+                info.userTable = findTable(['ZUSER', 'Z_USER', 'ZCONTACT', 'Z_CONTACT', 'USERS', 'CONTACTS', 'FRIENDS', 'BUDDY', 'USER']);
+
+                // フォールバック解析: テーブル名で検出できない場合、全テーブルのカラムを自動探索
+                if (!info.msgTable) {
+                    for (let table of info.allTables) {
+                        try {
+                            const cRes = db.exec(`PRAGMA table_info(${table})`);
+                            if (cRes.length && cRes[0].values) {
+                                const cols = cRes[0].values.map(c => c[1].toUpperCase());
+                                const hasText = cols.some(c => c.includes('TEXT') || c.includes('CONTENT') || c.includes('BODY') || c.includes('MESSAGE'));
+                                const hasTime = cols.some(c => c.includes('TIME') || c.includes('DATE') || c.includes('STAMP') || c.includes('CREATED'));
+                                if (hasText && hasTime) {
+                                    info.msgTable = table;
+                                    break;
+                                }
+                            }
+                        } catch(e) {}
+                    }
+                }
 
                 if (info.msgTable) {
                     const colsRes = db.exec(`PRAGMA table_info(${info.msgTable})`);
@@ -568,11 +602,11 @@
                             return null;
                         };
 
-                        info.textCol = findCol(['ZTEXT', 'TEXT', 'ZCONTENT', 'CONTENT', 'BODY', 'MESSAGE']);
-                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'CREATED_AT', 'TIME', 'DATE']);
-                        info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'ZFROMME']);
-                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'CHATID', 'ROOM_ID', 'MID']);
-                        info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID', 'ZSENDERID', 'SENDER', 'ZFROM', 'FROM_MID']);
+                        info.textCol = findCol(['ZTEXT', 'TEXT', 'ZCONTENT', 'CONTENT', 'BODY', 'MESSAGE', 'ZBODY', 'MSG']);
+                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'CREATED_AT', 'TIME', 'DATE', 'ZTIME', 'ZDATE']);
+                        info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'ZFROMME', 'IS_OUT']);
+                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'CHATID', 'ROOM_ID', 'MID', 'CHAT_MID']);
+                        info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID', 'ZSENDERID', 'SENDER', 'ZFROM', 'FROM_MID', 'FROM_ID']);
                         info.typeCol = findCol(['ZCONTENTTYPE', 'ZTYPE', 'CONTENT_TYPE', 'TYPE', 'ZMSGTYPE', 'MSG_TYPE']);
                     }
                 }
@@ -589,8 +623,8 @@
                             }
                             return cCols.find(c => candidates.some(cand => c.toUpperCase().includes(cand.toUpperCase())));
                         };
-                        info.chatNameCol = findChatCol(['ZNAME', 'NAME', 'TITLE']);
-                        info.chatMidCol = findChatCol(['ZMID', 'MID', 'ZCHATID', 'CHAT_ID']);
+                        info.chatNameCol = findChatCol(['ZNAME', 'NAME', 'TITLE', 'CHAT_NAME']);
+                        info.chatMidCol = findChatCol(['ZMID', 'MID', 'ZCHATID', 'CHAT_ID', 'ID']);
                     }
                 }
 
@@ -635,8 +669,6 @@
             let date;
             if (numTs > 1000000000000) {
                 date = new Date(numTs);
-            } else if (numTs > 1000000000) {
-                date = new Date(numTs * 1000);
             } else if (numTs > 100000000) {
                 if (numTs > 946684800) {
                     date = new Date(numTs * 1000);
@@ -688,26 +720,28 @@
                         });
                         if (existingCols.length > 0) {
                             const userColsSql = existingCols.map(c => `NULLIF(${c}, '')`).join(', ');
-                            nameExpr = `COALESCE(NULLIF(c.ZNAME, ''), ${userColsSql}, 'トーク相手 (ID: ' || c.Z_PK || ')')`;
+                            nameExpr = `COALESCE(NULLIF(c.${info.chatNameCol || 'ZNAME'}, ''), ${userColsSql}, 'トーク相手 (ID: ' || c.rowid || ')')`;
                         } else {
-                            nameExpr = `COALESCE(NULLIF(c.ZNAME, ''), 'トーク相手 (ID: ' || c.Z_PK || ')')`;
+                            nameExpr = `COALESCE(NULLIF(c.${info.chatNameCol || 'ZNAME'}, ''), 'トーク相手 (ID: ' || c.rowid || ')')`;
                         }
                         joinUserSql = `LEFT JOIN ${info.userTable} u ON c.${info.chatMidCol} = u.${info.userMidCol}`;
                     } else {
-                        nameExpr = `COALESCE(NULLIF(c.ZNAME, ''), 'トーク相手 (ID: ' || c.Z_PK || ')')`;
+                        nameExpr = `COALESCE(NULLIF(c.${info.chatNameCol || 'ZNAME'}, ''), 'トーク相手 (ID: ' || c.rowid || ')')`;
                     }
+
+                    const pkCol = info.chatTable ? (db.exec(`PRAGMA table_info(${info.chatTable})`)[0]?.values.find(v => v[1].toUpperCase() === 'Z_PK') ? 'Z_PK' : 'rowid') : 'rowid';
 
                     const joinQuery = `
                         SELECT 
-                            c.Z_PK,
+                            c.${pkCol},
                             ${nameExpr} as name,
                             ${info.chatMidCol ? `c.${info.chatMidCol}` : "''"} as chat_mid,
-                            COUNT(m.ROWID) as msg_count,
+                            COUNT(m.rowid) as msg_count,
                             MAX(m.${timeCol}) as last_time
                         FROM ${info.chatTable} c
                         ${joinUserSql}
-                        LEFT JOIN ${info.msgTable} m ON m.${chatCol} = c.Z_PK
-                        GROUP BY c.Z_PK
+                        LEFT JOIN ${info.msgTable} m ON m.${chatCol} = c.${pkCol}
+                        GROUP BY c.${pkCol}
                         HAVING msg_count > 0
                         ORDER BY last_time DESC
                     `;
@@ -716,16 +750,17 @@
 
                 if ((!res.length || !res[0].values.length) && info.chatTable) {
                     try {
+                        const pkCol = db.exec(`PRAGMA table_info(${info.chatTable})`)[0]?.values.find(v => v[1].toUpperCase() === 'Z_PK') ? 'Z_PK' : 'rowid';
                         const simpleChatQuery = `
                             SELECT 
-                                c.Z_PK,
-                                COALESCE(NULLIF(c.ZNAME, ''), 'トーク相手 (ID: ' || c.Z_PK || ')') as name,
+                                c.${pkCol},
+                                COALESCE(NULLIF(c.${info.chatNameCol || 'ZNAME'}, ''), 'トーク相手 (ID: ' || c.${pkCol} || ')') as name,
                                 ${info.chatMidCol ? `c.${info.chatMidCol}` : "''"} as chat_mid,
-                                COUNT(m.ROWID) as msg_count,
+                                COUNT(m.rowid) as msg_count,
                                 MAX(m.${timeCol}) as last_time
                             FROM ${info.chatTable} c
-                            LEFT JOIN ${info.msgTable} m ON m.${chatCol} = c.Z_PK
-                            GROUP BY c.Z_PK
+                            LEFT JOIN ${info.msgTable} m ON m.${chatCol} = c.${pkCol}
+                            GROUP BY c.${pkCol}
                             ORDER BY last_time DESC
                         `;
                         res = db.exec(simpleChatQuery);
@@ -740,8 +775,8 @@
                                 ${groupCol} as Z_PK,
                                 'トーク相手 (ID: ' || ${groupCol} || ')' as name,
                                 '' as chat_mid,
-                                COUNT(m.ROWID) as msg_count,
-                                MAX(m.${info.timeCol || 'ROWID'}) as last_time
+                                COUNT(m.rowid) as msg_count,
+                                MAX(m.${info.timeCol || 'rowid'}) as last_time
                             FROM ${info.msgTable} m
                             GROUP BY ${groupCol}
                             ORDER BY last_time DESC
@@ -824,7 +859,7 @@
                     <div>
                         <h2>👤 ${escapeHtml(chatName)}</h2>
                         <div class="chat-header-details">
-                            ${!isAllMode ? `<span>内部ID (Z_PK): <strong>${chatId}</strong></span>` : ''}
+                            ${!isAllMode ? `<span>内部ID: <strong>${chatId}</strong></span>` : ''}
                             ${chatMid ? `<span>識別MID: <strong>${escapeHtml(chatMid)}</strong></span>` : ''}
                             ${!isAllMode ? `<span>総件数: <strong>${totalMsgCount}</strong> 件</span>` : ''}
                         </div>

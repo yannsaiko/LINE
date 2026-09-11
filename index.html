@@ -389,8 +389,7 @@
                         };
 
                         info.textCols = info.msgCols.filter(c => 
-                            /^(ZTEXT|ZCONTENT|ZBODY|TEXT|CONTENT|BODY|ZMESSAGE_TEXT|ZEXTRA|ZPARAMETER)$/i.test(c) || 
-                            /TEXT|CONTENT|BODY/i.test(c)
+                            /TEXT|CONTENT|BODY|MESSAGE/i.test(c)
                         );
                         info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE', 'ZDATE']);
                         info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'IS_OUT', 'FROM_ME']);
@@ -763,19 +762,20 @@
                 const timeCol = info.timeCol || 'ROWID';
 
                 let idConditions = [];
-                
-                if (targetChatItem.chatId) {
-                    const safeId = String(targetChatItem.chatId).replace(/'/g, "''");
+                const idSet = new Set();
+
+                if (targetChatItem.chatId) idSet.add(String(targetChatItem.chatId).trim());
+                if (targetChatItem.mappedMid) idSet.add(String(targetChatItem.mappedMid).trim());
+                if (targetChatItem.chatId && acc.pkToMidMap[targetChatItem.chatId]) idSet.add(String(acc.pkToMidMap[targetChatItem.chatId]).trim());
+                if (targetChatItem.mappedMid && acc.midToPkMap[targetChatItem.mappedMid]) idSet.add(String(acc.midToPkMap[targetChatItem.mappedMid]).trim());
+
+                idSet.forEach(idVal => {
+                    const safeId = idVal.replace(/'/g, "''");
                     idConditions.push(`CAST("${chatCol}" AS TEXT) = '${safeId}'`);
-                }
-                
-                if (targetChatItem.mappedMid) {
-                    const safeMid = String(targetChatItem.mappedMid).replace(/'/g, "''");
-                    idConditions.push(`CAST("${chatCol}" AS TEXT) = '${safeMid}'`);
-                    if (acc.midToPkMap[targetChatItem.mappedMid]) {
-                        idConditions.push(`"${chatCol}" = ${acc.midToPkMap[targetChatItem.mappedMid]}`);
+                    if (/^\d+$/.test(idVal)) {
+                        idConditions.push(`"${chatCol}" = ${idVal}`);
                     }
-                }
+                });
 
                 const whereClause = idConditions.length > 0 ? `WHERE (${idConditions.join(' OR ')})` : '';
                 const query = `SELECT * FROM "${info.msgTable}" ${whereClause} ORDER BY "${timeCol}" ASC`;
@@ -791,10 +791,13 @@
                     const senderIdx = info.senderCol ? cUpper.indexOf(info.senderCol.toUpperCase()) : -1;
                     const typeIdx = info.typeCol ? cUpper.indexOf(info.typeCol.toUpperCase()) : -1;
 
+                    const possibleTextCols = ['ZTEXT', 'ZCONTENT', 'ZBODY', 'TEXT', 'CONTENT', 'BODY', 'ZMESSAGE_TEXT', 'MESSAGE_TEXT', 'ZMESSAGE', 'MESSAGE'];
                     const textIndices = [];
-                    ['ZTEXT', 'ZCONTENT', 'ZBODY', 'TEXT', 'CONTENT', 'BODY', 'ZMESSAGE_TEXT', 'MESSAGE_TEXT', 'ZEXTRA', 'ZPARAMETER'].forEach(tc => {
-                        let idx = cUpper.indexOf(tc);
-                        if (idx !== -1 && !textIndices.includes(idx)) textIndices.push(idx);
+                    columns.forEach((col, idx) => {
+                        const colName = col.toUpperCase();
+                        if (possibleTextCols.includes(colName) || colName.includes('TEXT') || colName.includes('CONTENT') || colName.includes('BODY')) {
+                            textIndices.push(idx);
+                        }
                     });
 
                     res[0].values.forEach(row => {
@@ -871,26 +874,19 @@
             let sourceFiles = new Set();
             let errors = [];
 
-            if (accountId === 'all' || accountId === null) {
-                const relatedItems = targetChat.relatedItems || [targetChat];
-                relatedItems.forEach(item => {
-                    const acc = accounts[item.accountId];
-                    if (acc) {
-                        sourceFiles.add(acc.fileName);
-                        const { messages, error } = getMessagesFromAccount(acc, item);
-                        if (error) errors.push(`${acc.fileName}: ${error}`);
-                        allMsgs.push(...messages);
-                    }
-                });
-            } else {
-                const acc = accounts[accountId];
+            const itemsToProcess = (accountId === 'all' || accountId === null)
+                ? (targetChat.relatedItems || [targetChat])
+                : [(targetChat.relatedItems && targetChat.relatedItems[0]) ? targetChat.relatedItems[0] : targetChat];
+
+            itemsToProcess.forEach(item => {
+                const acc = accounts[item.accountId];
                 if (acc) {
                     sourceFiles.add(acc.fileName);
-                    const { messages, error } = getMessagesFromAccount(acc, targetChat);
+                    const { messages, error } = getMessagesFromAccount(acc, item);
                     if (error) errors.push(`${acc.fileName}: ${error}`);
                     allMsgs.push(...messages);
                 }
-            }
+            });
 
             allMsgs.sort((a, b) => a.normTime - b.normTime);
 

@@ -3,155 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQLite 内部構造（テーブル・カラム）デバッグ解析ツール</title>
+    <title>LINE トーク解析・復元ツール (iOS CoreData対応)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
         body {
-            margin: 0;
-            padding: 20px;
+            margin: 0; padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f4f6f8;
-            color: #333;
-        }
-        h1 { font-size: 20px; color: #111; margin-top: 0; }
-        #drop-zone {
-            padding: 40px;
-            border: 2px dashed #00c300;
-            border-radius: 8px;
-            background: #fff;
-            text-align: center;
-            cursor: pointer;
-            margin-bottom: 20px;
-        }
-        #drop-zone input { display: none; }
-        #status-msg {
-            padding: 10px;
-            background: #e9ecef;
-            border-radius: 6px;
-            font-weight: bold;
-            font-size: 14px;
-            margin-bottom: 20px;
-        }
-        .controls {
+            background-color: #f0f2f5;
+            color: #1c1e21;
+            height: 100vh;
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+            flex-direction: column;
         }
-        .search-input {
-            flex: 1;
-            padding: 10px 14px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        .table-card {
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            margin-bottom: 16px;
-            overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        }
-        .table-card.highlight {
-            border: 2px solid #00c300;
-        }
-        .table-header {
-            padding: 12px 16px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e0e0e0;
+        header {
+            background-color: #00c300;
+            color: white;
+            padding: 12px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            cursor: pointer;
         }
-        .table-card.highlight .table-header {
-            background: #e6f9e6;
+        header h1 { font-size: 18px; margin: 0; }
+        .btn {
+            border: none; padding: 8px 16px; font-weight: bold;
+            border-radius: 20px; cursor: pointer; font-size: 13px;
         }
-        .table-title {
-            font-size: 15px;
-            font-weight: bold;
-            font-family: monospace;
+        .btn-reset { background-color: rgba(255,255,255,0.2); color: white; }
+
+        #drop-zone {
+            margin: 40px auto; width: 90%; max-width: 700px;
+            padding: 50px 20px; border: 2px dashed #00c300;
+            border-radius: 12px; background: white; text-align: center; cursor: pointer;
         }
-        .badge {
-            background: #6c757d;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
+        #drop-zone input { display: none; }
+        #status-msg { text-align: center; font-size: 14px; color: #555; margin-top: 10px; }
+
+        #app-container { display: none; flex: 1; overflow: hidden; }
+        #sidebar {
+            width: 350px; background: white; border-right: 1px solid #ddd;
+            display: flex; flex-direction: column;
         }
-        .badge-highlight {
-            background: #00c300;
+        .search-box { padding: 10px; border-bottom: 1px solid #eee; }
+        .search-input { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 16px; font-size: 13px; }
+
+        #chat-list { flex: 1; overflow-y: auto; }
+        .chat-item {
+            padding: 12px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer;
+            display: flex; align-items: center; gap: 12px;
         }
-        .table-body {
-            padding: 16px;
-            display: none;
+        .chat-item:hover { background-color: #f8f9fa; }
+        .chat-item.active { background-color: #e6f9e6; font-weight: bold; }
+        .chat-avatar {
+            width: 40px; height: 40px; border-radius: 50%; background: #00c300;
+            color: white; display: flex; align-items: center; justify-content: center; font-weight: bold;
         }
-        .table-body.open {
-            display: block;
+        .chat-info { flex: 1; min-width: 0; }
+        .chat-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .chat-count { font-size: 11px; color: #777; margin-top: 2px; }
+
+        #chat-view { flex: 1; background: #8cabd9; padding: 20px; overflow-y: auto; }
+        .chat-header { background: white; padding: 14px 18px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .chat-header h2 { margin: 0; font-size: 16px; color: #111; }
+
+        .msg-row { display: flex; flex-direction: column; margin-bottom: 12px; }
+        .msg-row.me { align-items: flex-end; }
+        .msg-row.other { align-items: flex-start; }
+        .msg-meta { font-size: 10px; color: #e0e0e0; margin-bottom: 3px; display: flex; gap: 6px; }
+        .bubble {
+            max-width: 80%; padding: 10px 14px; border-radius: 14px;
+            font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-break: break-word;
         }
-        .col-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-bottom: 12px;
-        }
-        .col-item {
-            background: #eef2f5;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 12px;
-            border: 1px solid #d0d7de;
-        }
-        .data-table-wrapper {
-            overflow-x: auto;
-            max-height: 250px;
-            border: 1px solid #eee;
-        }
-        table.sample-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 11px;
-            font-family: monospace;
-        }
-        table.sample-table th, table.sample-table td {
-            border: 1px solid #ddd;
-            padding: 6px 8px;
-            text-align: left;
-            white-space: nowrap;
-            max-width: 300px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        table.sample-table th {
-            background: #f1f3f5;
-            position: sticky;
-            top: 0;
-        }
+        .me .bubble { background-color: #85e249; border-top-right-radius: 2px; color: #000; }
+        .other .bubble { background-color: #ffffff; border-top-left-radius: 2px; color: #000; }
     </style>
 </head>
 <body>
 
-    <h1>🔍 SQLite 内部構造デバッグ・可視化ツール</h1>
-    
+    <header>
+        <h1>LINE トーク解析ツール (iOS CoreData対応)</h1>
+        <button class="btn btn-reset" onclick="location.reload()">↺ 再読み込み</button>
+    </header>
+
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <h3>📁 ここに Line.sqlite 等のデータベースファイルをドロップ</h3>
-        <p style="color:#666; font-size:13px;">またはクリックしてファイルを選択</p>
+        <h3>📁 Line.sqlite または P_Line.sqlite をドロップ</h3>
+        <p style="color: #666; font-size: 13px;">メッセージ件数が存在するSQLiteファイルを指定してください</p>
         <input type="file" id="file-input">
     </div>
-
     <div id="status-msg">ライブラリ初期化中...</div>
 
-    <div class="controls" id="controls" style="display: none;">
-        <input type="text" id="filter-input" class="search-input" placeholder="テーブル名・カラム名で絞り込み (例: MESSAGE, TEXT, CHAT)..." oninput="filterTables()">
+    <div id="app-container">
+        <div id="sidebar">
+            <div class="search-box">
+                <input type="text" class="search-input" placeholder="🔍 名前・トーク部屋を検索..." oninput="filterChatList(this.value)">
+            </div>
+            <div id="chat-list"></div>
+        </div>
+        <div id="chat-view">
+            <div style="text-align: center; color: white; margin-top: 50px;">左側のリストからトーク部屋を選択してください</div>
+        </div>
     </div>
-
-    <div id="output-list"></div>
 
     <script>
         let SQL = null;
-        let tableDataList = [];
+        let db = null;
+        let chatMap = {};
+        let userMap = {};
+        let extractedChats = [];
+        let schemaInfo = { msgTable: '', chatCol: '', textCols: [], timeCol: '', isMeCol: '' };
 
         initSqlJs().then(sqlEngine => {
             SQL = sqlEngine;
@@ -163,158 +122,237 @@
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
 
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); });
+        dropZone.addEventListener('dragover', (e) => e.preventDefault());
         dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
-            if (e.dataTransfer.files.length > 0) {
-                await processFile(e.dataTransfer.files[0]);
-            }
+            if (e.dataTransfer.files.length > 0) await processFile(e.dataTransfer.files[0]);
         });
-
         fileInput.addEventListener('change', async (e) => {
-            if (e.target.files.length > 0) {
-                await processFile(e.target.files[0]);
-            }
+            if (e.target.files.length > 0) await processFile(e.target.files[0]);
         });
 
         async function processFile(file) {
             if (!SQL) return;
-            const statusEl = document.getElementById('status-msg');
-            statusEl.innerText = `ファイル読み込み中: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)...`;
+            document.getElementById('status-msg').innerText = 'データベース解析中...';
 
             try {
                 const arrayBuffer = await file.arrayBuffer();
-                const db = new SQL.Database(new Uint8Array(arrayBuffer));
+                db = new SQL.Database(new Uint8Array(arrayBuffer));
 
-                // 全テーブル名取得
-                const tablesRes = db.exec("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY name ASC");
-                if (!tablesRes.length || !tablesRes[0].values) {
-                    statusEl.innerText = 'テーブルが見つかりませんでした (暗号化されているか、空のDBの可能性があります)';
+                detectSchema();
+                if (!schemaInfo.msgTable) {
+                    alert('メッセージテーブルが見つかりませんでした。');
                     return;
                 }
 
-                const tableNames = tablesRes[0].values.map(r => r[0]);
-                tableDataList = [];
+                buildDictionaries();
+                extractRooms();
 
-                for (let tableName of tableNames) {
-                    // カラム情報取得
-                    let cols = [];
-                    try {
-                        const colRes = db.exec(`PRAGMA table_info("${tableName}")`);
-                        if (colRes.length) {
-                            cols = colRes[0].values.map(c => ({ name: c[1], type: c[2] }));
-                        }
-                    } catch (e) {}
+                document.getElementById('drop-zone').style.display = 'none';
+                document.getElementById('status-msg').style.display = 'none';
+                document.getElementById('app-container').style.display = 'flex';
 
-                    // 件数取得
-                    let count = 0;
-                    try {
-                        const countRes = db.exec(`SELECT COUNT(*) FROM "${tableName}"`);
-                        if (countRes.length) count = countRes[0].values[0][0];
-                    } catch (e) {}
-
-                    // サンプルデータ (先頭3件)
-                    let sampleRows = [];
-                    let sampleCols = [];
-                    try {
-                        const sampleRes = db.exec(`SELECT * FROM "${tableName}" LIMIT 3`);
-                        if (sampleRes.length) {
-                            sampleCols = sampleRes[0].columns;
-                            sampleRows = sampleRes[0].values;
-                        }
-                    } catch (e) {}
-
-                    tableDataList.push({
-                        name: tableName,
-                        count: count,
-                        cols: cols,
-                        sampleCols: sampleCols,
-                        sampleRows: sampleRows
-                    });
-                }
-
-                statusEl.innerText = `解析完了: 全 ${tableDataList.length} 件のテーブルを検出しました。`;
-                document.getElementById('controls').style.display = 'flex';
-                renderTables();
-
+                renderChatList();
             } catch (err) {
-                statusEl.innerHTML = `<span style="color:red;">エラー: ${err.message}</span>`;
+                document.getElementById('status-msg').innerHTML = `<span style="color:red;">エラー: ${err.message}</span>`;
             }
         }
 
-        function renderTables() {
-            const container = document.getElementById('output-list');
-            container.innerHTML = '';
+        function detectSchema() {
+            const tablesRes = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
+            if (!tablesRes.length) return;
+            const tables = tablesRes[0].values.map(r => r[0]);
 
-            const keyword = document.getElementById('filter-input').value.trim().toLowerCase();
+            // メッセージテーブル特定
+            schemaInfo.msgTable = tables.find(t => /^Z.*MESSAGE$/i.test(t) || /MESSAGE/i.test(t)) || '';
+            if (!schemaInfo.msgTable) return;
 
-            tableDataList.forEach((tbl, idx) => {
-                const isMatchName = tbl.name.toLowerCase().includes(keyword);
-                const isMatchCol = tbl.cols.some(c => c.name.toLowerCase().includes(keyword));
+            const colsRes = db.exec(`PRAGMA table_info("${schemaInfo.msgTable}")`);
+            const cols = colsRes[0].values.map(c => c[1]);
 
-                if (keyword && !isMatchName && !isMatchCol) return;
+            // 部屋識別列
+            schemaInfo.chatCol = cols.find(c => /^ZCHAT$/i.test(c) || /CHAT/i.test(c)) || cols[0];
+            
+            // 本文列（複数候補を全取得）
+            schemaInfo.textCols = cols.filter(c => /^ZTEXT$/i.test(c) || /TEXT/i.test(c) || /BODY/i.test(c) || /CONTENT/i.test(c) || /EXTRA/i.test(c));
+            
+            // 時刻列
+            schemaInfo.timeCol = cols.find(c => /^ZCREATEDTIME$/i.test(c) || /TIME/i.test(c) || /DATE/i.test(c)) || 'ROWID';
 
-                // メッセージやユーザー等に関連しそうなテーブルを判定
-                const isKeyTable = /MESSAGE|CHAT|USER|CONTACT|TALK/i.test(tbl.name);
+            // 送信者判定列
+            schemaInfo.isMeCol = cols.find(c => /^ZISFROMME$/i.test(c) || /IS_FROM_ME/i.test(c) || /IS_ME/i.test(c)) || '';
+        }
 
-                const card = document.createElement('div');
-                card.className = `table-card ${isKeyTable ? 'highlight' : ''}`;
+        function buildDictionaries() {
+            chatMap = {};
+            userMap = {};
 
-                const colsHtml = tbl.cols.map(c => `<span class="col-item">${escapeHtml(c.name)} <small style="color:#888;">(${escapeHtml(c.type)})</small></span>`).join('');
-
-                let sampleTableHtml = '';
-                if (tbl.sampleRows.length > 0) {
-                    const ths = tbl.sampleCols.map(c => `<th>${escapeHtml(c)}</th>`).join('');
-                    const trs = tbl.sampleRows.map(row => {
-                        const tds = row.map(val => `<td>${escapeHtml(val !== null ? val : 'NULL')}</td>`).join('');
-                        return `<tr>${tds}</tr>`;
-                    }).join('');
-
-                    sampleTableHtml = `
-                        <div style="font-size:12px; font-weight:bold; margin:10px 0 4px 0;">サンプデータ (先頭3件):</div>
-                        <div class="data-table-wrapper">
-                            <table class="sample-table">
-                                <thead><tr>${ths}</tr></thead>
-                                <tbody>${trs}</tbody>
-                            </table>
-                        </div>
-                    `;
-                } else {
-                    sampleTableHtml = `<div style="font-size:12px; color:#888; margin-top:8px;">※データ行が存在しません</div>`;
+            // チャット部屋名辞書
+            try {
+                const chatTables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%CHAT%' OR name LIKE '%ROOM%')");
+                if (chatTables.length) {
+                    const cTable = chatTables[0].values[0][0];
+                    const cRes = db.exec(`SELECT * FROM "${cTable}"`);
+                    if (cRes.length) {
+                        const cols = cRes[0].columns;
+                        const pkIdx = cols.findIndex(c => c.toUpperCase() === 'Z_PK' || c.toUpperCase() === 'ID' || c.toUpperCase() === 'ROWID');
+                        const nameIdx = cols.findIndex(c => c.toUpperCase().includes('NAME') || c.toUpperCase().includes('TITLE'));
+                        
+                        if (pkIdx !== -1 && nameIdx !== -1) {
+                            cRes[0].values.forEach(r => {
+                                if (r[pkIdx] !== null && r[nameIdx]) chatMap[String(r[pkIdx])] = String(r[nameIdx]);
+                            });
+                        }
+                    }
                 }
+            } catch (e) {}
 
-                card.innerHTML = `
-                    <div class="table-header" onclick="toggleBody(${idx})">
-                        <div class="table-title">📋 ${escapeHtml(tbl.name)}</div>
-                        <div>
-                            <span class="badge ${isKeyTable ? 'badge-highlight' : ''}">${tbl.count} 件</span>
-                            <span class="badge" style="background:#007bff;">${tbl.cols.length} カラム</span>
-                        </div>
-                    </div>
-                    <div class="table-body ${isKeyTable ? 'open' : ''}" id="body-${idx}">
-                        <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">カラム構成:</div>
-                        <div class="col-list">${colsHtml}</div>
-                        ${sampleTableHtml}
+            // ユーザー名辞書
+            try {
+                const userTables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%USER%' OR name LIKE '%CONTACT%')");
+                if (userTables.length) {
+                    const uTable = userTables[0].values[0][0];
+                    const uRes = db.exec(`SELECT * FROM "${uTable}"`);
+                    if (uRes.length) {
+                        const cols = uRes[0].columns;
+                        const pkIdx = cols.findIndex(c => c.toUpperCase() === 'Z_PK' || c.toUpperCase() === 'ID' || c.toUpperCase() === 'ROWID' || c.toUpperCase().includes('MID'));
+                        const nameIdx = cols.findIndex(c => c.toUpperCase().includes('NAME') || c.toUpperCase().includes('DISPLAY'));
+                        
+                        if (pkIdx !== -1 && nameIdx !== -1) {
+                            uRes[0].values.forEach(r => {
+                                if (r[pkIdx] !== null && r[nameIdx]) userMap[String(r[pkIdx])] = String(r[nameIdx]);
+                            });
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+
+        function extractRooms() {
+            extractedChats = [];
+            const query = `
+                SELECT "${schemaInfo.chatCol}", COUNT(*) as cnt, MAX("${schemaInfo.timeCol}") as max_time
+                FROM "${schemaInfo.msgTable}"
+                GROUP BY "${schemaInfo.chatCol}"
+                ORDER BY max_time DESC
+            `;
+
+            try {
+                const res = db.exec(query);
+                if (res.length && res[0].values) {
+                    res[0].values.forEach(row => {
+                        const rawId = row[0] !== null ? String(row[0]) : 'UNKNOWN';
+                        const count = row[1];
+                        const name = chatMap[rawId] || userMap[rawId] || `トークルーム (ID: ${rawId})`;
+
+                        extractedChats.push({ id: rawId, name: name, count: count });
+                    });
+                }
+            } catch (e) {
+                console.error("トーク一覧抽出エラー:", e);
+            }
+        }
+
+        function renderChatList(filter = '') {
+            const listEl = document.getElementById('chat-list');
+            listEl.innerHTML = '';
+
+            const filtered = extractedChats.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()) || c.id.includes(filter));
+
+            filtered.forEach(chat => {
+                const item = document.createElement('div');
+                item.className = 'chat-item';
+                item.onclick = () => {
+                    document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+                    item.classList.add('active');
+                    loadMessages(chat.id, chat.name);
+                };
+
+                item.innerHTML = `
+                    <div class="chat-avatar">${escapeHtml(chat.name.charAt(0))}</div>
+                    <div class="chat-info">
+                        <div class="chat-name">${escapeHtml(chat.name)}</div>
+                        <div class="chat-count">${chat.count} 件のメッセージ</div>
                     </div>
                 `;
-
-                container.appendChild(card);
+                listEl.appendChild(item);
             });
         }
 
-        function toggleBody(idx) {
-            const body = document.getElementById(`body-${idx}`);
-            if (body) body.classList.toggle('open');
+        function loadMessages(chatId, chatName) {
+            const chatView = document.getElementById('chat-view');
+            chatView.innerHTML = `
+                <div class="chat-header">
+                    <h2>💬 ${escapeHtml(chatName)}</h2>
+                </div>
+            `;
+
+            let whereClause = chatId === 'UNKNOWN' 
+                ? `WHERE "${schemaInfo.chatCol}" IS NULL` 
+                : `WHERE CAST("${schemaInfo.chatCol}" AS TEXT) = '${chatId.replace(/'/g, "''")}'`;
+
+            const query = `SELECT * FROM "${schemaInfo.msgTable}" ${whereClause} ORDER BY "${schemaInfo.timeCol}" ASC`;
+
+            try {
+                const res = db.exec(query);
+                if (res.length && res[0].values) {
+                    const cols = res[0].columns;
+                    const timeIdx = cols.indexOf(schemaInfo.timeCol);
+                    const isMeIdx = cols.indexOf(schemaInfo.isMeCol);
+
+                    res[0].values.forEach(row => {
+                        // テキスト抽出（複数候補の列から値が入っているものを自動取得）
+                        let textContent = '';
+                        for (let colName of schemaInfo.textCols) {
+                            let idx = cols.indexOf(colName);
+                            if (idx !== -1 && row[idx]) {
+                                textContent = String(row[idx]);
+                                break;
+                            }
+                        }
+
+                        if (!textContent) textContent = '[画像/スタンプ/通話履歴/システムメッセージ]';
+
+                        let isMe = false;
+                        if (isMeIdx !== -1) {
+                            let val = row[isMeIdx];
+                            isMe = (val === 1 || val === '1' || val === true);
+                        }
+
+                        let timeVal = timeIdx !== -1 ? row[timeIdx] : null;
+                        let timeStr = formatTimestamp(timeVal);
+
+                        const msgRow = document.createElement('div');
+                        msgRow.className = `msg-row ${isMe ? 'me' : 'other'}`;
+                        msgRow.innerHTML = `
+                            <div class="msg-meta">
+                                <span>${isMe ? '自分' : escapeHtml(chatName)}</span>
+                                <span>${timeStr}</span>
+                            </div>
+                            <div class="bubble">${escapeHtml(textContent)}</div>
+                        `;
+                        chatView.appendChild(msgRow);
+                    });
+                }
+            } catch (e) {
+                chatView.innerHTML += `<div style="color:red; background:white; padding:10px;">メッセージ読み込みエラー: ${e.message}</div>`;
+            }
         }
 
-        function filterTables() {
-            renderTables();
+        function formatTimestamp(ts) {
+            if (!ts) return '';
+            let num = Number(ts);
+            let date;
+            if (num > 1000000000000) date = new Date(num);
+            else if (num > 100000000) date = new Date(num * 1000);
+            else date = new Date(978307200000 + num * 1000); // Cocoa Epoch (iOS CoreData)
+
+            if (isNaN(date.getTime())) return '';
+            return `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
         }
 
-        function escapeHtml(str) {
-            if (str === null || str === undefined) return '';
-            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
+        function filterChatList(val) { renderChatList(val); }
+        function escapeHtml(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>'); }
     </script>
 </body>
 </html>

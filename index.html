@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴 全データ完全抽出 & 印刷ツール</title>
+    <title>LINE トーク・全データ深層自動抽出 & 統合解析ツール</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
         body {
             margin: 0;
             padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
             background-color: #f0f2f5;
             color: #1c1e21;
             height: 100vh;
@@ -43,7 +43,7 @@
         #drop-zone {
             margin: 30px auto;
             width: 90%;
-            max-width: 650px;
+            max-width: 750px;
             padding: 50px 20px;
             border: 2px dashed #00c300;
             border-radius: 12px;
@@ -58,7 +58,7 @@
         #status-msg {
             margin: 10px auto;
             width: 90%;
-            max-width: 650px;
+            max-width: 750px;
             font-size: 13px;
             color: #555;
             text-align: center;
@@ -71,7 +71,7 @@
             overflow: hidden;
         }
         #sidebar {
-            width: 340px;
+            width: 380px;
             background: white;
             border-right: 1px solid #ddd;
             display: flex;
@@ -99,6 +99,14 @@
             font-weight: bold;
             color: #333;
         }
+        #file-summary {
+            padding: 8px 16px;
+            background: #eef2f5;
+            font-size: 11px;
+            color: #444;
+            border-bottom: 1px solid #ddd;
+            line-height: 1.4;
+        }
         #chat-list { flex: 1; overflow-y: auto; }
         
         .chat-item {
@@ -112,7 +120,7 @@
         }
         .chat-item:hover { background-color: #f8f9fa; }
         .chat-item.active { background-color: #e6f9e6; font-weight: bold; }
-        .chat-item.all-chats-item { background-color: #f0fdf4; border-bottom: 2px solid #00c300; }
+        .chat-item.all-chats-item { background-color: #eaf7ed; border-bottom: 2px solid #00c300; }
         
         .chat-avatar {
             width: 40px;
@@ -158,8 +166,9 @@
             gap: 10px;
         }
         .btn-sm {
-            padding: 4px 10px;
+            padding: 5px 12px;
             font-size: 11px;
+            font-weight: bold;
             border-radius: 4px;
             border: 1px solid #ccc;
             background: #fff;
@@ -200,7 +209,7 @@
         }
 
         .bubble-container {
-            max-width: 85%;
+            max-width: 88%;
             display: flex;
             flex-direction: column;
         }
@@ -219,7 +228,7 @@
         }
         .me .bubble { background-color: #85e249; border-top-right-radius: 2px; color: #000; }
         .other .bubble { background-color: #ffffff; border-top-left-radius: 2px; color: #000; }
-        .non-text-bubble { font-style: italic; color: #555; background-color: #eef2f5 !important; }
+        .non-text-bubble { font-style: italic; color: #444; background-color: #eef2f5 !important; border: 1px dashed #bbb; }
 
         .all-fields-container {
             margin-top: 6px;
@@ -245,7 +254,7 @@
             padding: 10px;
             border-radius: 6px;
             margin-top: 4px;
-            max-height: 300px;
+            max-height: 350px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
@@ -269,7 +278,7 @@
 <body>
 
     <header>
-        <h1>LINE トーク履歴 全データ完全抽出 & 印刷ツール</h1>
+        <h1>LINE トーク・全データ深層自動抽出 & 統合解析ツール</h1>
         <div class="header-actions">
             <button id="btn-reset" class="btn btn-reset" onclick="location.reload()">↺ 最初からやり直す</button>
             <button id="btn-print" class="btn btn-print" onclick="window.print()">🖨 印刷 (PDF保存)</button>
@@ -277,18 +286,19 @@
     </header>
 
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <h3>📁 ここにフォルダー、または「Line.sqlite」ファイルをドロップ</h3>
-        <p style="color: #666; font-size: 13px;">（フォルダー内のサブディレクトリも含めて自動で LINE データベースファイルを検索します）</p>
+        <h3>📁 ここにLINEデータを含むフォルダー、またはファイルをドロップ</h3>
+        <p style="color: #666; font-size: 13px;">（Line.sqlite、バックアップフォルダ、サブディレクトリ内を自動解析・網羅検索します）</p>
         <input type="file" id="file-input" webkitdirectory directory multiple>
     </div>
-    <div id="status-msg">ライブラリの初期化中...</div>
+    <div id="status-msg">ライブラリ初期化中...</div>
 
     <div id="app-container">
         <div id="sidebar">
             <div class="account-selector-box">
-                <label for="account-select">👤 検出されたデータベース選択:</label>
+                <label for="account-select">👤 検出されたデータベース解析結果:</label>
                 <select id="account-select" onchange="switchAccount(this.value)"></select>
             </div>
+            <div id="file-summary"></div>
             <div id="chat-list"></div>
         </div>
         <div id="chat-view">
@@ -304,17 +314,19 @@
         let SQL = null;
 
         const CONTENT_TYPE_MAP = {
-            0: 'テキスト',
-            1: '画像',
-            2: '動画',
-            3: '音声メッセージ',
-            7: 'ロケーション (位置情報)',
-            11: 'スタンプ',
-            12: '連絡先 / カード',
-            13: 'ノート / アルバム通知',
-            14: 'グループ通話 / 通話履歴',
-            15: 'ファイル添付',
-            16: '公式アカウントリンク / リッチメッセージ'
+            0: '💬 テキスト',
+            1: '🖼 画像',
+            2: '🎥 動画',
+            3: '🎙 音声メッセージ',
+            7: '📍 ロケーション (位置情報)',
+            11: '🎨 スタンプ',
+            12: '🎴 連絡先 / カード',
+            13: '📓 ノート / アルバム通知',
+            14: '📞 グループ通話 / 通話履歴',
+            15: '📎 ファイル添付',
+            16: '🔗 リッチメッセージ / リンク',
+            18: '✨ アニメーションスタンプ',
+            22: '👤 アバターメッセージ'
         };
 
         initSqlJs().then(sqlEngine => {
@@ -334,7 +346,7 @@
             let filesToProcess = [];
 
             if (items && items.length > 0) {
-                document.getElementById('status-msg').innerText = 'フォルダー構造をスキャン中...';
+                document.getElementById('status-msg').innerText = '全フォルダー構造を深層スキャン中...';
                 let entryPromises = [];
                 for (let i = 0; i < items.length; i++) {
                     const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
@@ -392,8 +404,9 @@
 
         async function handleFiles(fileList) {
             if (!SQL) return;
-            document.getElementById('status-msg').innerText = 'データベースファイルを検索・検証中...';
+            document.getElementById('status-msg').innerText = 'SQLite データベース構造・テーブル群を深層解析中...';
 
+            // SQLiteファイル候補のフィルタリング
             const targetFiles = fileList.filter(file => {
                 const name = file.name.toLowerCase();
                 if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) return false;
@@ -427,12 +440,12 @@
                         });
                     }
                 } catch (e) {
-                    console.warn(`スキップ対象 (${file.name}):`, e);
+                    console.warn(`解析スキップ (${file.name}):`, e);
                 }
             }
 
             if (accounts.length === 0) {
-                document.getElementById('status-msg').innerHTML = '<span style="color:red;">有効な LINE データベースファイル（Line.sqlite等）が見つかりませんでした。<br>正しいフォルダーやファイルを選択しているかご確認ください。</span>';
+                document.getElementById('status-msg').innerHTML = '<span style="color:red;">有効な LINE データベース（Line.sqlite等）が見つかりませんでした。<br>適切なフォルダまたはファイルが選択されているかご確認ください。</span>';
                 return;
             }
 
@@ -447,7 +460,7 @@
             accounts.forEach((acc, index) => {
                 const option = document.createElement('option');
                 option.value = index;
-                option.textContent = `${acc.fileName} (${acc.fileSize}) [${acc.filePath}]`;
+                option.textContent = `${acc.fileName} (${acc.fileSize})`;
                 selectEl.appendChild(option);
             });
 
@@ -456,6 +469,7 @@
 
         function analyzeDatabase(db) {
             let info = { 
+                allTables: [],
                 msgTable: null, msgCols: [], textCol: null, timeCol: null, isMeCol: null, chatCol: null, 
                 senderCol: null, typeCol: null, chatTable: null, userTable: null,
                 userCols: [], userPkCol: null, userMidCol: null, chatMidCol: null, chatNameCol: null
@@ -464,11 +478,11 @@
             try {
                 const res = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
                 if (!res.length) return info;
-                const tables = res[0].values.map(r => r[0]);
+                info.allTables = res[0].values.map(r => r[0]);
 
-                info.msgTable = tables.find(t => t === 'ZMESSAGE' || t === 'messages') || tables.find(t => t.includes('MESSAGE'));
-                info.chatTable = tables.find(t => t === 'ZCHAT' || t === 'chats') || tables.find(t => t.includes('CHAT'));
-                info.userTable = tables.find(t => t === 'ZUSER' || t === 'ZCONTACT' || t === 'users') || tables.find(t => t.includes('USER') || t.includes('CONTACT'));
+                info.msgTable = info.allTables.find(t => t === 'ZMESSAGE' || t === 'messages') || info.allTables.find(t => t.includes('MESSAGE'));
+                info.chatTable = info.allTables.find(t => t === 'ZCHAT' || t === 'chats') || info.allTables.find(t => t.includes('CHAT'));
+                info.userTable = info.allTables.find(t => t === 'ZUSER' || t === 'ZCONTACT' || t === 'users') || info.allTables.find(t => t.includes('USER') || t.includes('CONTACT'));
 
                 if (info.msgTable) {
                     const colsRes = db.exec(`PRAGMA table_info(${info.msgTable})`);
@@ -503,7 +517,7 @@
                     }
                 }
             } catch (e) {
-                console.error("DB構造解析エラー:", e);
+                console.error("DB分析エラー:", e);
             }
             return info;
         }
@@ -511,6 +525,10 @@
         function switchAccount(index) {
             currentAccount = accounts[index];
             if (!currentAccount) return;
+            
+            const summaryEl = document.getElementById('file-summary');
+            summaryEl.innerHTML = `📄 パス: <strong>${escapeHtml(currentAccount.filePath)}</strong><br>📊 検出テーブル数: ${currentAccount.info.allTables.length} 個`;
+
             document.getElementById('chat-view').innerHTML = `
                 <div style="text-align: center; color: #ffffff; margin-top: 50px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">
                     左側のリストからトークルームを選択してください
@@ -552,7 +570,7 @@
                     let joinUserSql = "";
 
                     if (info.userTable && info.userMidCol && info.chatMidCol) {
-                        const targetUserCols = ['u.ZCUSTOMNAME', 'u.ZNAME', 'u.ZPHONETICNAME', 'u.ZDISPLAYNAME', 'u.ZNICKNAME'];
+                        const targetUserCols = ['u.ZCUSTOMNAME', 'u.ZNAME', 'u.ZPHONETICNAME', 'u.ZDISPLAYNAME', 'u.ZNICKNAME', 'u.ZADDRESSBOOKNAME'];
                         const existingCols = targetUserCols.filter(col => {
                             const colName = col.replace('u.', '');
                             return info.userCols.some(c => c.toUpperCase() === colName);
@@ -583,7 +601,7 @@
                         GROUP BY c.Z_PK
                         ORDER BY last_time DESC
                     `;
-                    try { res = db.exec(joinQuery); } catch(e) { console.warn("トーク一覧結合エラー:", e); }
+                    try { res = db.exec(joinQuery); } catch(e) { console.warn("トークリストクエリ実行エラー:", e); }
                 }
 
                 if (!res.length || !res[0].values.length) {
@@ -603,18 +621,18 @@
                 }
 
                 if (!res.length || !res[0].values.length) {
-                    chatList.innerHTML = '<div style="padding:15px; color:#999; font-size:12px;">データが見つかりません</div>';
+                    chatList.innerHTML = '<div style="padding:15px; color:#999; font-size:12px;">メッセージデータが見つかりません</div>';
                     return;
                 }
 
-                // 「すべてのトーク履歴を一括表示」項目を追加
+                // 全トーク一括抽出用ボタン
                 const allItem = document.createElement('div');
                 allItem.className = 'chat-item all-chats-item';
                 allItem.innerHTML = `
                     <div class="chat-avatar" style="background:#007bff;">★</div>
                     <div class="chat-info-body">
-                        <div class="chat-name">すべてのトーク（全件一括ロード）</div>
-                        <div class="chat-meta"><span>全データ一括出力・印刷用</span></div>
+                        <div class="chat-name">全トーク履歴（一括完全抽出）</div>
+                        <div class="chat-meta"><span>すべてのチャットデータを統合表示</span></div>
                     </div>
                 `;
                 allItem.onclick = () => {
@@ -635,7 +653,7 @@
                         <div class="chat-info-body">
                             <div class="chat-name">${escapeHtml(name)}</div>
                             <div class="chat-meta">
-                                <span>件数: ${count} 件</span>
+                                <span>${count} 件</span>
                                 <span>${formatTimestamp(lastTime)}</span>
                             </div>
                         </div>
@@ -650,7 +668,7 @@
 
             } catch (err) {
                 console.error(err);
-                chatList.innerHTML = '<div style="padding:15px; color:red;">トークリスト取得エラー</div>';
+                chatList.innerHTML = '<div style="padding:15px; color:red;">トークリスト取得中にエラーが発生しました</div>';
             }
         }
 
@@ -675,14 +693,14 @@
             chatView.innerHTML = `
                 <div class="chat-header-info">
                     <div>
-                        <h2>👤 トーク相手: ${escapeHtml(chatName)}</h2>
+                        <h2>👤 ${escapeHtml(chatName)}</h2>
                         <div class="chat-header-details">
-                            ${!isAllMode ? `<span>内部チャットID (Z_PK): <strong>${chatId}</strong></span>` : ''}
+                            ${!isAllMode ? `<span>内部ID (Z_PK): <strong>${chatId}</strong></span>` : ''}
                             ${chatMid ? `<span>識別MID: <strong>${escapeHtml(chatMid)}</strong></span>` : ''}
-                            ${!isAllMode ? `<span>総記録数: <strong>${totalMsgCount}</strong> 件</span>` : ''}
+                            ${!isAllMode ? `<span>総件数: <strong>${totalMsgCount}</strong> 件</span>` : ''}
                         </div>
                         <div class="controls-bar">
-                            <button class="btn-sm" onclick="toggleAllFields(true)">🔓 全生データをすべて展開</button>
+                            <button class="btn-sm" onclick="toggleAllFields(true)">🔓 全生データを一括展開</button>
                             <button class="btn-sm" onclick="toggleAllFields(false)">🔒 全生データを折りたたむ</button>
                         </div>
                     </div>
@@ -702,7 +720,7 @@
             let joinSql = "";
 
             if (info.userTable && info.senderCol && info.userCols && info.userCols.length > 0) {
-                const targetUserCols = ['u.ZCUSTOMNAME', 'u.ZNAME', 'u.ZPHONETICNAME', 'u.ZDISPLAYNAME', 'u.ZNICKNAME'];
+                const targetUserCols = ['u.ZCUSTOMNAME', 'u.ZNAME', 'u.ZPHONETICNAME', 'u.ZDISPLAYNAME', 'u.ZNICKNAME', 'u.ZADDRESSBOOKNAME'];
                 const existingCols = targetUserCols.filter(col => {
                     const colName = col.replace('u.', '');
                     return info.userCols.some(c => c.toUpperCase() === colName);
@@ -730,13 +748,13 @@
             try {
                 res = db.exec(fullQuery);
             } catch (e) {
-                console.error("全カラム取得失敗:", e);
-                chatView.innerHTML += `<div style="color:white; background:red; padding:10px; border-radius:5px; margin-top:20px;">全カラムロードエラー: ${escapeHtml(e.message)}</div>`;
+                console.error("深層抽出エラー:", e);
+                chatView.innerHTML += `<div style="color:white; background:red; padding:10px; border-radius:5px; margin-top:20px;">抽出エラー: ${escapeHtml(e.message)}</div>`;
                 return;
             }
 
             if (!res.length || !res[0].values.length) {
-                chatView.innerHTML += '<div style="color:white; text-align:center; margin-top:30px;">メッセージ履歴がありません</div>';
+                chatView.innerHTML += '<div style="color:white; text-align:center; margin-top:30px;">メッセージ履歴が存在しません</div>';
                 return;
             }
 
@@ -777,7 +795,7 @@
                 }
 
                 const timeStr = formatTimestamp(ts);
-                const typeLabel = CONTENT_TYPE_MAP[contentType] || `タイプ:${contentType}`;
+                const typeLabel = CONTENT_TYPE_MAP[contentType] || `タイプ: ${contentType}`;
                 const hasText = text && String(text).trim() !== '';
                 const displayText = hasText ? escapeHtml(text) : `[${typeLabel}]`;
 

@@ -85,7 +85,7 @@
         .other .bubble { background-color: #ffffff; border-top-left-radius: 2px; }
 
         .wal-warning { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 8px 12px; font-size: 11px; border-radius: 4px; margin-top: 5px; }
-        .error-log { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 6px; margin-top: 10px; text-align: left; font-size: 12px; font-family: monospace; }
+        .error-log { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 12px; border-radius: 6px; margin-top: 10px; text-align: left; font-size: 12px; font-family: monospace; white-space: pre-wrap; }
 
         @media print {
             header, #sidebar, .file-select-btns, .wal-warning { display: none !important; }
@@ -274,7 +274,9 @@
                             filePath: path,
                             fileSize: `${sizeMB} MB`,
                             db: dbInstance,
-                            info: dbInfo
+                            info: dbInfo,
+                            pkToMidMap: {},
+                            midToPkMap: {}
                         };
                         accounts.push(accountObj);
 
@@ -301,10 +303,7 @@
                 return;
             }
 
-            // 1. 全SQLiteファイルを跨いだグローバル辞書の構築（Line.sqlite と P_Line.sqlite の相互補完）
             buildGlobalDictionaries();
-
-            // 2. 全ファイルからトークルーム抽出
             extractChatsFromAllAccounts();
 
             dropZone.style.display = 'none';
@@ -390,12 +389,12 @@
                         };
 
                         info.textCols = info.msgCols.filter(c => 
-                            /^(ZTEXT|ZCONTENT|ZBODY|TEXT|CONTENT|BODY|ZMESSAGE_TEXT)$/i.test(c) || 
+                            /^(ZTEXT|ZCONTENT|ZBODY|TEXT|CONTENT|BODY|ZMESSAGE_TEXT|ZEXTRA|ZPARAMETER)$/i.test(c) || 
                             /TEXT|CONTENT|BODY/i.test(c)
                         );
-                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE']);
+                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE', 'ZDATE']);
                         info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'IS_OUT', 'FROM_ME']);
-                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'ROOM_ID', 'CHAT']);
+                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'ROOM_ID', 'CHAT', 'ZADDRESSBOOKID']);
                         info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID', 'FROM_MID', 'SENDER']);
                         info.typeCol = findCol(['ZCONTENTTYPE', 'ZTYPE', 'CONTENT_TYPE', 'TYPE', 'CTYPE']);
                     }
@@ -408,7 +407,6 @@
             globalUserMap = {};
             globalChatMap = {};
 
-            // パス 1: ユーザー・連絡先テーブルの全ファイルスキャン
             accounts.forEach(acc => {
                 const { db, info } = acc;
                 const userTables = info.allTables.filter(t => 
@@ -452,7 +450,6 @@
                 });
             });
 
-            // パス 2: チャットルームテーブルの全ファイルスキャン＆ユーザー連携
             accounts.forEach(acc => {
                 const { db, info } = acc;
                 const chatTables = info.allTables.filter(t => 
@@ -470,11 +467,22 @@
                         const res = db.exec(`SELECT * FROM "${tableName}"`);
                         if (!res.length || !res[0].values) return;
 
+                        const pkIdx = cUpper.indexOf('Z_PK') !== -1 ? cUpper.indexOf('Z_PK') : cUpper.indexOf('ROWID');
+                        const midIdx = cUpper.indexOf('ZMID') !== -1 ? cUpper.indexOf('ZMID') : cUpper.indexOf('MID');
+
                         const nameCols = ['ZNAME', 'ZTITLE', 'NAME', 'TITLE', 'CHAT_NAME'];
                         const idCols = ['Z_PK', 'ROWID', 'ZMID', 'MID', 'ZCHATID', 'CHAT_ID'];
                         const midCols = ['ZMID', 'MID', 'ZADDRESSBOOKID', 'ZUSER', 'ZOWNER'];
 
                         res[0].values.forEach(row => {
+                            let pkVal = pkIdx !== -1 ? String(row[pkIdx]) : null;
+                            let midVal = midIdx !== -1 ? String(row[midIdx]) : null;
+
+                            if (pkVal && midVal) {
+                                acc.pkToMidMap[pkVal] = midVal;
+                                acc.midToPkMap[midVal] = pkVal;
+                            }
+
                             let chatName = '';
                             for (let nc of nameCols) {
                                 let idx = cUpper.indexOf(nc);
@@ -488,9 +496,9 @@
                                 for (let mc of midCols) {
                                     let idx = cUpper.indexOf(mc);
                                     if (idx !== -1 && row[idx]) {
-                                        let midVal = String(row[idx]).trim();
-                                        if (globalUserMap[midVal]) {
-                                            chatName = globalUserMap[midVal];
+                                        let mVal = String(row[idx]).trim();
+                                        if (globalUserMap[mVal]) {
+                                            chatName = globalUserMap[mVal];
                                             break;
                                         }
                                     }
@@ -545,13 +553,20 @@
                     if (res.length && res[0].values) {
                         res[0].values.forEach(row => {
                             const [chatId, count, lastTime] = row;
-                            const key = String(chatId).trim();
+                            const rawKey = String(chatId).trim();
                             
+                            let mappedMid = acc.pkToMidMap[rawKey] || rawKey;
+                            let resolvedName = resolveChatName(mappedMid);
+                            if (resolvedName.startsWith('トークルーム (ID:')) {
+                                resolvedName = resolveChatName(rawKey);
+                            }
+
                             allDiscoveredChats.push({
                                 accountId: id,
                                 fileName: fileName,
-                                chatId: key,
-                                chatName: resolveChatName(key),
+                                chatId: rawKey,
+                                mappedMid: mappedMid,
+                                chatName: resolvedName,
                                 msgCount: count,
                                 lastTime: lastTime
                             });
@@ -580,7 +595,7 @@
             if (num > 100000000000) return num;
             if (num > 100000000) {
                 if (num > 1000000000) return num * 1000;
-                return 978307200000 + (num * 1000); // CoreData 2001/1/1 起点
+                return 978307200000 + (num * 1000);
             }
             return 978307200000 + (num * 1000);
         }
@@ -617,7 +632,6 @@
                 if (item.chatName.toLowerCase().includes(q)) return true;
                 if (String(item.chatId).toLowerCase().includes(q)) return true;
 
-                // 本文の即時高速検索
                 return item.relatedItems.some(rel => {
                     const acc = accounts[rel.accountId];
                     if (acc && acc.info && acc.info.msgTable) {
@@ -627,6 +641,8 @@
                             const safeChatId = String(rel.chatId).replace(/'/g, "''");
                             const safeQ = q.replace(/'/g, "''");
                             
+                            if (textCols.length === 0) return false;
+
                             const clauses = textCols.map(c => `LOWER("${c}") LIKE '%${safeQ}%'`).join(' OR ');
                             const checkSql = `SELECT 1 FROM "${acc.info.msgTable}" WHERE CAST("${chatCol}" AS TEXT) = '${safeChatId}' AND (${clauses}) LIMIT 1`;
                             const checkRes = acc.db.exec(checkSql);
@@ -648,8 +664,8 @@
                 const groups = {};
 
                 allDiscoveredChats.forEach(chat => {
-                    let groupKey = chat.chatId;
-                    if (!/^[ucg][0-9a-f]{32}$/i.test(chat.chatId) && chat.chatName && !chat.chatName.startsWith('トークルーム (ID:')) {
+                    let groupKey = chat.mappedMid || chat.chatId;
+                    if (!/^[ucg][0-9a-f]{32}$/i.test(groupKey) && chat.chatName && !chat.chatName.startsWith('トークルーム (ID:')) {
                         groupKey = chat.chatName.toLowerCase();
                     }
 
@@ -737,29 +753,43 @@
             });
         }
 
-        function getMessagesFromAccount(acc, chatId) {
+        function getMessagesFromAccount(acc, targetChatItem) {
             const { db, info, id, fileName } = acc;
             const messages = [];
-            if (!info.msgTable) return messages;
+            if (!info.msgTable) return { messages: [], error: 'メッセージテーブル未検出' };
 
             try {
                 const chatCol = info.chatCol || 'ZCHAT';
                 const timeCol = info.timeCol || 'ROWID';
 
-                const safeChatId = String(chatId).replace(/'/g, "''");
-                let whereClause = `WHERE CAST("${chatCol}" AS TEXT) = '${safeChatId}'`;
+                let idConditions = [];
+                
+                if (targetChatItem.chatId) {
+                    const safeId = String(targetChatItem.chatId).replace(/'/g, "''");
+                    idConditions.push(`CAST("${chatCol}" AS TEXT) = '${safeId}'`);
+                }
+                
+                if (targetChatItem.mappedMid) {
+                    const safeMid = String(targetChatItem.mappedMid).replace(/'/g, "''");
+                    idConditions.push(`CAST("${chatCol}" AS TEXT) = '${safeMid}'`);
+                    if (acc.midToPkMap[targetChatItem.mappedMid]) {
+                        idConditions.push(`"${chatCol}" = ${acc.midToPkMap[targetChatItem.mappedMid]}`);
+                    }
+                }
 
+                const whereClause = idConditions.length > 0 ? `WHERE (${idConditions.join(' OR ')})` : '';
                 const query = `SELECT * FROM "${info.msgTable}" ${whereClause} ORDER BY "${timeCol}" ASC`;
+                
                 const res = db.exec(query);
 
                 if (res.length && res[0].values) {
                     const columns = res[0].columns;
                     const cUpper = columns.map(c => c.toUpperCase());
 
-                    const timeIdx = info.timeCol ? columns.indexOf(info.timeCol) : -1;
-                    const isMeIdx = info.isMeCol ? columns.indexOf(info.isMeCol) : -1;
-                    const senderIdx = info.senderCol ? columns.indexOf(info.senderCol) : -1;
-                    const typeIdx = info.typeCol ? columns.indexOf(info.typeCol) : -1;
+                    const timeIdx = info.timeCol ? cUpper.indexOf(info.timeCol.toUpperCase()) : -1;
+                    const isMeIdx = info.isMeCol ? cUpper.indexOf(info.isMeCol.toUpperCase()) : -1;
+                    const senderIdx = info.senderCol ? cUpper.indexOf(info.senderCol.toUpperCase()) : -1;
+                    const typeIdx = info.typeCol ? cUpper.indexOf(info.typeCol.toUpperCase()) : -1;
 
                     const textIndices = [];
                     ['ZTEXT', 'ZCONTENT', 'ZBODY', 'TEXT', 'CONTENT', 'BODY', 'ZMESSAGE_TEXT', 'MESSAGE_TEXT', 'ZEXTRA', 'ZPARAMETER'].forEach(tc => {
@@ -770,19 +800,24 @@
                     res[0].values.forEach(row => {
                         let textContent = '';
                         for (let idx of textIndices) {
-                            if (row[idx] !== null && row[idx] !== undefined && String(row[idx]).trim() !== '') {
-                                textContent = String(row[idx]);
-                                break;
+                            if (row[idx] !== null && row[idx] !== undefined) {
+                                const val = row[idx];
+                                if (val instanceof Uint8Array) {
+                                    textContent = new TextDecoder('utf-8', { fatal: false }).decode(val);
+                                } else {
+                                    textContent = String(val);
+                                }
+                                if (textContent.trim() !== '') break;
                             }
                         }
 
                         let typeVal = typeIdx !== -1 ? row[typeIdx] : null;
 
-                        if (!textContent) {
+                        if (!textContent || textContent.trim() === '') {
                             if (typeVal !== null && CONTENT_TYPE_MAP[typeVal]) {
                                 textContent = CONTENT_TYPE_MAP[typeVal];
                             } else {
-                                textContent = '[スタンプ / メディア / Letter Sealing暗号化メッセージ]';
+                                textContent = '[スタンプ / メディア / 暗号化メッセージ]';
                             }
                         } else if (typeVal !== null && typeVal !== 0 && typeVal !== '0') {
                             const typeLabel = CONTENT_TYPE_MAP[typeVal];
@@ -821,8 +856,11 @@
                         });
                     });
                 }
-            } catch (e) { console.error(`メッセージ取得失敗 (${fileName}):`, e); }
-            return messages;
+                return { messages, error: null };
+            } catch (e) {
+                console.error(`メッセージ取得失敗 (${fileName}):`, e);
+                return { messages: [], error: e.message };
+            }
         }
 
         function loadMessagesForChat(targetChat, accountId) {
@@ -831,6 +869,7 @@
 
             let allMsgs = [];
             let sourceFiles = new Set();
+            let errors = [];
 
             if (accountId === 'all' || accountId === null) {
                 const relatedItems = targetChat.relatedItems || [targetChat];
@@ -838,16 +877,18 @@
                     const acc = accounts[item.accountId];
                     if (acc) {
                         sourceFiles.add(acc.fileName);
-                        const msgs = getMessagesFromAccount(acc, item.chatId);
-                        allMsgs.push(...msgs);
+                        const { messages, error } = getMessagesFromAccount(acc, item);
+                        if (error) errors.push(`${acc.fileName}: ${error}`);
+                        allMsgs.push(...messages);
                     }
                 });
             } else {
                 const acc = accounts[accountId];
                 if (acc) {
                     sourceFiles.add(acc.fileName);
-                    const msgs = getMessagesFromAccount(acc, targetChat.chatId);
-                    allMsgs.push(...msgs);
+                    const { messages, error } = getMessagesFromAccount(acc, targetChat);
+                    if (error) errors.push(`${acc.fileName}: ${error}`);
+                    allMsgs.push(...messages);
                 }
             }
 
@@ -864,6 +905,13 @@
                 </div>
             `;
             chatView.appendChild(headerEl);
+
+            if (errors.length > 0) {
+                const errBox = document.createElement('div');
+                errBox.className = 'error-log';
+                errBox.innerHTML = `<strong>⚠️ メッセージ読み込み中の警告・エラー:</strong>\n${escapeHtml(errors.join('\n'))}`;
+                chatView.appendChild(errBox);
+            }
 
             if (allMsgs.length === 0) {
                 const emptyEl = document.createElement('div');

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴 抽出・印刷ツール (ローカル直接実行版)</title>
+    <title>LINE トーク履歴 抽出・印刷ツール</title>
     <!-- WASM通つう信しんエラーを回かい避ひする純じゅん粋すいJS版ばん sql-asm.js を使し用よう -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
@@ -204,7 +204,7 @@
         let currentAccount = null;
         let SQL = null;
 
-        // sql-asm.js の初しょ期き化か（通つう信しん・External WASMの読よみ込こみを行おこなわないため file:// でも安あん全ぜんに動どう作さ）
+        // sql-asm.js の初しょ期き化か
         initSqlJs().then(sqlEngine => {
             SQL = sqlEngine;
             document.getElementById('status-msg').innerText = '準じゅん備び完かん了りょう: Line.sqlite ファイルをドロップしてください';
@@ -234,7 +234,6 @@
 
             document.getElementById('status-msg').innerText = 'ファイルを解かい析せき中ちゅう...';
 
-            // -wal, -shm 等とうの一いち時じファイルを排はい除じょ
             const validFiles = fileList.filter(file => {
                 const name = file.name.toLowerCase();
                 return !name.endsWith('-wal') && !name.endsWith('-shm') && !name.endsWith('.wal') && !name.endsWith('.shm');
@@ -248,7 +247,6 @@
                     const uInt8Array = new Uint8Array(arrayBuffer);
                     const dbInstance = new SQL.Database(uInt8Array);
 
-                    // テーブル構こう造ぞうの動どう的てき解かい析せき
                     const dbInfo = analyzeDatabase(dbInstance);
 
                     accounts.push({
@@ -285,7 +283,6 @@
             switchAccount(0);
         }
 
-        // LINEデータベース構こう造ぞうの動どう的てき探たん索さく
         function analyzeDatabase(db) {
             let info = { msgTable: null, textCol: null, timeCol: null, isMeCol: null, chatCol: null, chatTable: null, error: null };
             
@@ -361,16 +358,17 @@
                         <strong>⚠️ データを解かい析せきできませんでした (${escapeHtml(fileName)})</strong><br>
                         ${escapeHtml(info.error || "メッセージカラムが特とく定ていできません。")}<br><br>
                         <strong>確かく認にん事じ項こう:</strong><br>
-                        1. LINEアプリを完かん全ぜんに終しゅう了りょう（タスクキル）してから `Line.sqlite` を取しゅ得とくし直なおしてください。<br>
-                        2. データが `-wal` 側がわに残のこっている場ば合あいは、LINEを終しゅう了りょうすることで本ほん体たいへ書かき込こまれます。
+                        1. LINEアプリを完かん全ぜんに終しゅう了りょう（タスクキル）してから Line.sqlite を取しゅ得とくし直なおしてください。<br>
+                        2. データが -wal 側がわに残のこっている場ば合あいは、LINEを終しゅう了りょうすることで本ほん体たいへ書かき込こまれます。
                     </div>`;
                 return;
             }
 
             try {
-                let query = "";
+                let res = [];
+                // 1st Attempt: Try JOIN with ZCHAT table
                 if (info.chatTable && info.chatCol) {
-                    query = `
+                    const joinQuery = `
                         SELECT 
                             c.Z_PK,
                             COALESCE(c.ZNAME, 'トークルーム ' || c.Z_PK) as name,
@@ -382,25 +380,32 @@
                         GROUP BY c.Z_PK
                         ORDER BY last_time DESC
                     `;
-                } else {
-                    query = `
+                    try { res = db.exec(joinQuery); } catch(e) { console.warn("JOIN Query failed, trying fallback:", e); }
+                }
+
+                // 2nd Attempt: Fallback to ZMESSAGE single query if JOIN produced no results
+                if (!res.length || !res[0].values.length) {
+                    let groupCol = info.chatCol ? info.chatCol : '1';
+                    const fallbackQuery = `
                         SELECT 
-                            1 as Z_PK,
-                            '全ぜんメッセージ履り歴れき' as name,
+                            ${groupCol} as Z_PK,
+                            'トークルーム ' || ${groupCol} as name,
                             COUNT(ROWID) as msg_count,
                             MAX(${info.timeCol || 'ROWID'}) as last_time
                         FROM ${info.msgTable}
                         WHERE ${info.textCol} IS NOT NULL AND ${info.textCol} != ''
+                        GROUP BY ${groupCol}
+                        ORDER BY last_time DESC
                     `;
+                    res = db.exec(fallbackQuery);
                 }
 
-                const res = db.exec(query);
                 if (!res.length || !res[0].values.length) {
                     chatList.innerHTML = '<div style="padding:15px; color:#999; font-size:12px;">該がい当とうメッセージなし</div>';
                     document.getElementById('chat-view').innerHTML = `
                         <div class="diagnose-box">
                             <strong>⚠️ メッセージ本ほん文ぶんが見みつかりませんでした</strong><br>
-                            `Line.sqlite` 内ないにテキストメッセージが存そん在ざいしません。データが `-wal` 側がわに書かき残のこされている可か能のう性せいがあります。
+                            Line.sqlite 内ないにテキストメッセージが存そん在ざいしません。データが -wal 側がわに書かき残のこされている可か能のう性せいがあります。LINEアプリをタスクキルしてから再さい抽ちゅう出しゅつを行おこなってください。
                         </div>`;
                     return;
                 }
@@ -436,7 +441,7 @@
             const { db, info } = currentAccount;
 
             try {
-                let whereClause = (info.chatTable && info.chatCol) ? `WHERE ${info.chatCol} = ${chatId}` : "";
+                let whereClause = info.chatCol ? `WHERE ${info.chatCol} = '${chatId}'` : "";
                 let timeOrder = info.timeCol ? `ORDER BY ${info.timeCol} ASC` : "";
 
                 let query = `

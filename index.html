@@ -8,16 +8,17 @@
         :root {
             --primary: #00b900;
             --primary-dark: #009900;
-            --bg-color: #f4f6f8;
-            --sidebar-width: 360px;
-            --chat-bg: #8baac9;
+            --bg-color: #7294b2;
+            --sidebar-width: 340px;
+            --bubble-me: #85e249;
+            --bubble-other: #ffffff;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: #333;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "メイリオ", sans-serif;
+            background-color: #f4f6f8;
+            color: #1e1e1e;
             height: 100vh;
             display: flex;
             flex-direction: column;
@@ -31,15 +32,15 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
             z-index: 10;
         }
-        header h1 { font-size: 18px; font-weight: 700; }
+        header h1 { font-size: 17px; font-weight: 700; letter-spacing: 0.5px; }
         .header-btns { display: flex; gap: 8px; }
 
         .btn {
             border: none;
-            padding: 7px 14px;
+            padding: 7px 13px;
             border-radius: 6px;
             font-size: 12px;
             font-weight: bold;
@@ -50,23 +51,22 @@
             gap: 4px;
         }
         .btn-light { background: white; color: var(--primary-dark); }
-        .btn-light:hover { background: #f0f0f0; }
-        .btn-dark { background: rgba(0,0,0,0.2); color: white; }
-        .btn-dark:hover { background: rgba(0,0,0,0.3); }
+        .btn-light:hover { background: #eef2f5; }
+        .btn-dark { background: rgba(0,0,0,0.25); color: white; }
+        .btn-dark:hover { background: rgba(0,0,0,0.38); }
 
         #drop-zone {
             margin: auto;
             width: 90%;
-            max-width: 720px;
+            max-width: 680px;
             padding: 50px 30px;
             border: 2px dashed var(--primary);
             border-radius: 16px;
             background: white;
             text-align: center;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-            transition: transform 0.2s, background 0.2s;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.06);
         }
-        #drop-zone.dragover { background: #eef9ee; transform: scale(1.01); }
+        #drop-zone.dragover { background: #eef9ee; border-color: var(--primary-dark); }
         .file-inputs { margin-top: 24px; display: flex; justify-content: center; gap: 12px; }
         .file-label {
             background: var(--primary); color: white; padding: 10px 20px;
@@ -76,12 +76,13 @@
         #drop-zone input { display: none; }
 
         #status-bar {
-            background: #e9ecef; color: #495057; font-size: 12px;
-            padding: 6px 16px; text-align: center; border-bottom: 1px solid #dee2e6;
+            background: #e3e8ec; color: #495057; font-size: 12px;
+            padding: 6px 16px; text-align: center; border-bottom: 1px solid #d0d7de;
         }
 
         #app-container { display: none; flex: 1; height: calc(100vh - 85px); }
 
+        /* サイドバー (トーク一覧・検索) */
         #sidebar {
             width: var(--sidebar-width);
             background: white;
@@ -89,10 +90,10 @@
             display: flex;
             flex-direction: column;
         }
-        .sidebar-header { padding: 12px; border-bottom: 1px solid #eee; background: #fafafa; }
+        .sidebar-header { padding: 12px; border-bottom: 1px solid #f0f0f0; background: #fafafa; }
         .search-box {
-            width: 100%; padding: 8px 12px; border: 1px solid #ccc;
-            border-radius: 20px; font-size: 13px; outline: none;
+            width: 100%; padding: 8px 14px; border: 1px solid #ccc;
+            border-radius: 20px; font-size: 13px; outline: none; background: #fff;
         }
         .search-box:focus { border-color: var(--primary); }
 
@@ -100,76 +101,122 @@
         .chat-item {
             padding: 12px 16px; border-bottom: 1px solid #f5f5f5;
             cursor: pointer; display: flex; align-items: center; gap: 12px;
+            transition: background 0.15s;
         }
         .chat-item:hover { background: #f8f9fa; }
         .chat-item.active { background: #eaf8ea; }
         .avatar {
-            width: 42px; height: 42px; border-radius: 50%;
-            background: var(--primary); color: white;
+            width: 44px; height: 44px; border-radius: 50%;
+            background: #a0b2c6; color: white;
             display: flex; align-items: center; justify-content: center;
             font-weight: bold; flex-shrink: 0; font-size: 16px;
         }
         .chat-meta { flex: 1; min-width: 0; }
-        .chat-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .chat-sub { font-size: 11px; color: #888; margin-top: 3px; display: flex; justify-content: space-between; }
+        .chat-title { font-size: 14px; font-weight: 600; color: #222; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .chat-sub { font-size: 11px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
 
+        /* チャットメイン画面 */
         #chat-view {
-            flex: 1; background: var(--chat-bg);
+            flex: 1; background: var(--bg-color);
             display: flex; flex-direction: column; position: relative;
         }
         .chat-view-header {
-            background: white; padding: 12px 20px;
-            border-bottom: 1px solid #e0e0e0; display: flex;
+            background: white; padding: 10px 20px;
+            border-bottom: 1px solid #ddd; display: flex;
             justify-content: space-between; align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); z-index: 5;
         }
-        .chat-view-header h2 { font-size: 16px; color: #222; }
+        .chat-view-header h2 { font-size: 16px; color: #111; font-weight: bold; }
         .chat-view-header .info { font-size: 11px; color: #666; }
 
+        /* フィルターパネル */
+        #filter-panel {
+            background: #ffffff; border-bottom: 1px solid #dcdcdc;
+            padding: 10px 20px; font-size: 12px; display: flex;
+            flex-wrap: wrap; gap: 12px; align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.03); z-index: 4;
+        }
+        .filter-group { display: flex; align-items: center; gap: 6px; }
+        .filter-group label { font-weight: bold; color: #555; }
+        .filter-input {
+            padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: 12px; outline: none;
+        }
+
         #messages-container {
-            flex: 1; overflow-y: auto; padding: 20px;
-            display: flex; flex-direction: column; gap: 12px;
+            flex: 1; overflow-y: auto; padding: 16px 20px;
+            display: flex; flex-direction: column; gap: 10px;
         }
 
-        .pagination-bar { text-align: center; padding: 8px; margin-bottom: 10px; }
-        .pagination-btn {
-            background: rgba(255,255,255,0.9); border: none;
-            padding: 6px 16px; border-radius: 15px; font-size: 12px;
-            font-weight: bold; cursor: pointer; color: #333;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        /* 日付区切りヘッダー */
+        .date-divider {
+            align-self: center; margin: 12px 0 6px 0;
+            background: rgba(0, 0, 0, 0.22); color: white;
+            font-size: 11px; font-weight: bold; padding: 4px 14px;
+            border-radius: 12px; letter-spacing: 0.3px;
         }
-        .pagination-btn:hover { background: white; }
 
-        .msg-group { display: flex; flex-direction: column; max-width: 70%; }
-        .msg-group.me { align-self: flex-end; align-items: flex-end; }
-        .msg-group.other { align-self: flex-start; align-items: flex-start; }
+        /* メッセージグループ (LINEスタイル) */
+        .msg-row {
+            display: flex; gap: 8px; margin-bottom: 2px;
+            max-width: 75%;
+        }
+        .msg-row.me { align-self: flex-end; flex-direction: row-reverse; }
+        .msg-row.other { align-self: flex-start; flex-direction: row; }
 
-        .msg-info { font-size: 10px; color: rgba(255,255,255,0.9); margin-bottom: 2px; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+        .msg-avatar {
+            width: 36px; height: 36px; border-radius: 50%;
+            background: #a0b2c6; color: white; display: flex;
+            align-items: center; justify-content: center;
+            font-size: 13px; font-weight: bold; flex-shrink: 0; margin-top: 2px;
+        }
+
+        .msg-content { display: flex; flex-direction: column; }
+        .msg-sender-name { font-size: 11px; color: #444; margin-bottom: 3px; font-weight: 500; }
+
+        .msg-body-wrap { display: flex; align-items: flex-end; gap: 5px; }
+        .me .msg-body-wrap { flex-direction: row-reverse; }
+
         .bubble {
-            padding: 9px 13px; border-radius: 14px; font-size: 13.5px;
+            padding: 8px 12px; border-radius: 15px; font-size: 13.5px;
             line-height: 1.45; white-space: pre-wrap; word-break: break-word;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
-        .me .bubble { background: #85e249; color: #000; border-top-right-radius: 2px; }
-        .other .bubble { background: #ffffff; color: #000; border-top-left-radius: 2px; }
-        .media-bubble { background: #f1f3f5 !important; border: 1px solid #ced4da; font-style: italic; color: #495057; }
+        .me .bubble {
+            background: var(--bubble-me); color: #000;
+            border-top-right-radius: 2px;
+        }
+        .other .bubble {
+            background: var(--bubble-other); color: #000;
+            border-top-left-radius: 2px;
+        }
+
+        .media-bubble {
+            background: #f1f3f5 !important; border: 1px solid #ced4da;
+            font-style: italic; color: #495057; font-size: 12.5px;
+        }
+
+        .msg-time {
+            font-size: 10px; color: rgba(255,255,255,0.95);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.4); white-space: nowrap;
+        }
 
         .empty-state { margin: auto; color: white; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
 
         @media print {
-            header, #sidebar, .pagination-bar, .header-btns { display: none !important; }
+            header, #sidebar, #filter-panel, .header-btns { display: none !important; }
             #app-container { display: block !important; height: auto !important; }
-            #chat-view { background: white !important; overflow: visible !important; }
+            #chat-view { background: white !important; }
             #messages-container { overflow: visible !important; padding: 0 !important; }
             .bubble { border: 1px solid #ccc !important; box-shadow: none !important; }
-            .msg-info { color: #555 !important; text-shadow: none !important; }
+            .msg-time { color: #555 !important; text-shadow: none !important; }
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>LINE トーク高度解析 Engine</h1>
+        <h1>LINE トーク高度解析 Engine Pro</h1>
         <div class="header-btns">
             <button id="btn-export-csv" class="btn btn-dark" style="display:none;" onclick="exportChatCSV()">📄 CSV出力</button>
             <button id="btn-export-txt" class="btn btn-dark" style="display:none;" onclick="exportChatTXT()">📝 TXT出力</button>
@@ -183,8 +230,8 @@
     <div id="drop-zone">
         <h2>📁 データベースファイル/フォルダをドロップ</h2>
         <p style="color: #666; font-size: 13px; margin-top: 8px;">
-            <code>Line.sqlite</code> (iOS) または <code>Talk.sqlite</code> / <code>naver_line</code> (Android) を含むフォルダ・ファイルをドロップ<br>
-            ※ 関連する <code>-wal</code> ファイルも同時に読み込まれます
+            <code>Line.sqlite</code> (iOS) または <code>Talk.sqlite</code> (Android) を含むフォルダ・ファイルをドロップ<br>
+            ※ フォルダ丸ごとドロップ可能です
         </p>
         <div class="file-inputs">
             <label class="file-label">
@@ -201,13 +248,36 @@
     <div id="app-container">
         <div id="sidebar">
             <div class="sidebar-header">
-                <input type="text" class="search-box" placeholder="🔍 名前・IDで絞り込み..." oninput="filterChatList(this.value)">
+                <input type="text" class="search-box" id="sidebar-search" placeholder="🔍 名前・グループで検索..." oninput="filterChatList(this.value)">
             </div>
             <div id="chat-list"></div>
         </div>
         <div id="chat-view">
-            <div class="empty-state">
-                <h3>トークルームを選択してください</h3>
+            <div id="filter-panel" style="display:none;">
+                <div class="filter-group">
+                    <label>🔍 本文検索:</label>
+                    <input type="text" id="filter-keyword" class="filter-input" placeholder="キーワード..." oninput="applyFilters()">
+                </div>
+                <div class="filter-group">
+                    <label>👤 送信者:</label>
+                    <select id="filter-sender" class="filter-input" onchange="applyFilters()">
+                        <option value="all">全員</option>
+                        <option value="me">自分のみ</option>
+                        <option value="other">相手のみ</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>📁 種類:</label>
+                    <select id="filter-type" class="filter-input" onchange="applyFilters()">
+                        <option value="all">すべて</option>
+                        <option value="text">テキストのみ</option>
+                        <option value="media">メディア/添付のみ</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="empty-state" id="empty-state">
+                <h3>左側のトーク一覧から選択してください</h3>
             </div>
         </div>
     </div>
@@ -247,12 +317,12 @@
                             try {
                                 db.register_via_offset && db.register_via_offset('db-wal', new Uint8Array(walBuf));
                                 db.exec("PRAGMA wal_checkpoint(FULL);");
-                            } catch(wErr) { console.log("WAL merge bypassed"); }
+                            } catch(wErr) {}
                         }
 
                         schema = detectSchema(db);
                         if (!schema.msgTable) {
-                            throw new Error("有効なLINEデータベース構造が見つかりませんでした。ファイルが暗号化されているか、LINEのDBではありません。");
+                            throw new Error("有効なLINEデータベース構造が見つかりませんでした。暗号化されているか、LINEのファイルではありません。");
                         }
 
                         loadDictionaries(db, schema);
@@ -265,8 +335,8 @@
                 }
                 else if (action === 'getMessages') {
                     try {
-                        const { chatId, limit, offset } = payload;
-                        const result = fetchMessages(db, schema, chatId, limit, offset);
+                        const { chatId } = payload;
+                        const result = fetchAllMessages(db, schema, chatId);
                         self.postMessage({ action: 'messagesLoaded', payload: result });
                     } catch (err) {
                         self.postMessage({ action: 'error', error: err.message });
@@ -282,12 +352,12 @@
                     return {
                         type: 'iOS',
                         msgTable: 'ZMESSAGE',
-                        chatCol: cols.find(c => /ZCHAT$/i.test(c)) || 'ZCHAT',
-                        textCol: cols.find(c => /ZTEXT$/i.test(c)) || 'ZTEXT',
-                        timeCol: cols.find(c => /ZCREATEDTIME$/i.test(c)) || 'ZCREATEDTIME',
-                        isMeCol: cols.find(c => /ZISFROMME$/i.test(c)) || 'ZISFROMME',
-                        senderCol: cols.find(c => /ZSENDER$/i.test(c)) || 'ZSENDER',
-                        typeCol: cols.find(c => /ZCONTENTTYPE$/i.test(c)) || 'ZCONTENTTYPE',
+                        chatCol: cols.find(c => /^ZCHAT$/i.test(c)) || 'ZCHAT',
+                        textCol: cols.find(c => /^ZTEXT$/i.test(c)) || 'ZTEXT',
+                        timeCol: cols.find(c => /^ZCREATEDTIME$/i.test(c)) || 'ZCREATEDTIME',
+                        isMeCol: cols.find(c => /^ZISFROMME$/i.test(c)) || 'ZISFROMME',
+                        senderCol: cols.find(c => /^ZSENDER$/i.test(c)) || 'ZSENDER',
+                        typeCol: cols.find(c => /^ZCONTENTTYPE$/i.test(c)) || 'ZCONTENTTYPE',
                         userTable: tables.includes('ZUSER') ? 'ZUSER' : null,
                         chatTable: tables.includes('ZCHAT') ? 'ZCHAT' : null
                     };
@@ -312,29 +382,45 @@
 
             function loadDictionaries(db, sch) {
                 userMap = {}; chatMap = {};
+                
+                // ユーザー名マップ作成 (iOS & Android)
                 if (sch.userTable) {
                     try {
                         const res = db.exec(\`SELECT * FROM "\${sch.userTable}"\`)[0];
                         if (res) {
                             const cols = res.columns.map(c => c.toUpperCase());
-                            const idIdx = cols.findIndex(c => /ZMID|MID|Z_PK|ID/i.test(c));
-                            const nameIdx = cols.findIndex(c => /ZCUSTOMNAME|ZNAME|ZDISPLAYNAME|NAME/i.test(c));
-                            if (idIdx !== -1 && nameIdx !== -1) {
-                                res.values.forEach(r => { if (r[idIdx] && r[nameIdx]) userMap[String(r[idIdx])] = r[nameIdx]; });
-                            }
+                            const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID');
+                            const midIdx = cols.findIndex(c => /ZMID|MID/i.test(c));
+                            const nameIdx = cols.findIndex(c => /ZCUSTOMNAME|ZNAME|ZDISPLAYNAME|NAME|CUSTOM_NAME/i.test(c));
+
+                            res.values.forEach(r => {
+                                const name = r[nameIdx];
+                                if (name && String(name).trim() !== '') {
+                                    if (pkIdx !== -1 && r[pkIdx] !== null) userMap[String(r[pkIdx])] = String(name);
+                                    if (midIdx !== -1 && r[midIdx] !== null) userMap[String(r[midIdx])] = String(name);
+                                }
+                            });
                         }
                     } catch(e){}
                 }
+
+                // トーク名マップ作成
                 if (sch.chatTable) {
                     try {
                         const res = db.exec(\`SELECT * FROM "\${sch.chatTable}"\`)[0];
                         if (res) {
                             const cols = res.columns.map(c => c.toUpperCase());
-                            const idIdx = cols.findIndex(c => /Z_PK|ROWID|CHAT_ID|ID/i.test(c));
+                            const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'CHAT_ID' || c === 'ID');
+                            const midIdx = cols.findIndex(c => /ZMID|MID/i.test(c));
                             const nameIdx = cols.findIndex(c => /ZNAME|TITLE|NAME/i.test(c));
-                            if (idIdx !== -1 && nameIdx !== -1) {
-                                res.values.forEach(r => { if (r[idIdx] && r[nameIdx]) chatMap[String(r[idIdx])] = r[nameIdx]; });
-                            }
+
+                            res.values.forEach(r => {
+                                const name = r[nameIdx];
+                                if (name && String(name).trim() !== '') {
+                                    if (pkIdx !== -1 && r[pkIdx] !== null) chatMap[String(r[pkIdx])] = String(name);
+                                    if (midIdx !== -1 && r[midIdx] !== null) chatMap[String(r[midIdx])] = String(name);
+                                }
+                            });
                         }
                     } catch(e){}
                 }
@@ -353,16 +439,39 @@
 
                 return res.values.map(r => {
                     const id = String(r[0]);
-                    const name = chatMap[id] || userMap[id] || \`トークルーム (\${id})\`;
-                    return { id, name, count: r[1], lastTime: formatTimestamp(r[2], sch.type) };
+                    let name = chatMap[id] || userMap[id];
+                    
+                    // 名前が取れない場合は送信者から推測
+                    if (!name || name.trim() === '') {
+                        try {
+                            const senderRes = db.exec(\`
+                                SELECT "\${sch.senderCol}" FROM "\${sch.msgTable}" 
+                                WHERE "\${sch.chatCol}" = '\${id}' AND "\${sch.senderCol}" IS NOT NULL 
+                                LIMIT 5
+                            \`)[0];
+                            if (senderRes && senderRes.values) {
+                                for (let s of senderRes.values) {
+                                    const sName = userMap[String(s[0])];
+                                    if (sName) { name = sName; break; }
+                                }
+                            }
+                        } catch(e){}
+                    }
+
+                    if (!name) name = \`トーク (\${id})\`;
+
+                    const dateObj = parseTimestamp(r[2], sch.type);
+                    return { 
+                        id, 
+                        name, 
+                        count: r[1], 
+                        lastTime: dateObj ? formatDate(dateObj) : '' 
+                    };
                 });
             }
 
-            function fetchMessages(db, sch, chatId, limit, offset) {
+            function fetchAllMessages(db, sch, chatId) {
                 const safeId = String(chatId).replace(/'/g, "''");
-                
-                const countQuery = \`SELECT COUNT(*) FROM "\${sch.msgTable}" WHERE CAST("\${sch.chatCol}" AS TEXT) = '\${safeId}' OR "\${sch.chatCol}" = '\${safeId}'\`;
-                const totalCount = db.exec(countQuery)[0].values[0][0];
 
                 const query = \`
                     SELECT 
@@ -374,11 +483,10 @@
                     FROM "\${sch.msgTable}"
                     WHERE CAST("\${sch.chatCol}" AS TEXT) = '\${safeId}' OR "\${sch.chatCol}" = '\${safeId}'
                     ORDER BY "\${sch.timeCol}" ASC
-                    LIMIT \${limit} OFFSET \${offset}
                 \`;
 
                 const res = db.exec(query)[0];
-                if (!res || !res.values) return { totalCount, messages: [] };
+                if (!res || !res.values) return { messages: [] };
 
                 const messages = res.values.map(r => {
                     const rawText = r[0] || '';
@@ -387,11 +495,13 @@
                     const rawTime = r[3];
                     const type = r[4];
 
+                    // 自分のメッセージ判定 (isMe)
                     let isMe = false;
-                    if (isMeVal !== null && isMeVal !== undefined) {
+                    if (sch.type === 'iOS') {
                         isMe = (isMeVal === 1 || isMeVal === '1' || isMeVal === true);
-                    } else if (!senderId || senderId === '0') {
-                        isMe = true;
+                    } else {
+                        // Android
+                        isMe = (!senderId || senderId === '0' || senderId === 'null');
                     }
 
                     let senderName = isMe ? '自分' : (userMap[senderId] || '相手');
@@ -403,16 +513,20 @@
                         displayText = getMediaLabel(type);
                     }
 
+                    const dateObj = parseTimestamp(rawTime, sch.type);
+
                     return {
                         text: displayText,
                         isMe,
                         senderName,
-                        time: formatTimestamp(rawTime, sch.type),
+                        dateStr: dateObj ? formatDateHeader(dateObj) : '',
+                        timeStr: dateObj ? formatTime(dateObj) : '',
+                        timestamp: dateObj ? dateObj.getTime() : 0,
                         isMedia
                     };
                 });
 
-                return { totalCount, messages };
+                return { messages };
             }
 
             function getMediaLabel(type) {
@@ -429,10 +543,12 @@
                 }
             }
 
-            function formatTimestamp(ts, schemaType) {
-                if (!ts) return '';
+            function parseTimestamp(ts, schemaType) {
+                if (!ts) return null;
                 let num = Number(ts);
-                
+                if (isNaN(num) || num === 0) return null;
+
+                // iOS CoreData Epoch (2001-01-01起算) 補正
                 if (schemaType === 'iOS' || num < 1000000000) {
                     num = 978307200000 + (num * 1000);
                 } else if (num < 100000000000) {
@@ -440,24 +556,29 @@
                 }
 
                 const d = new Date(num);
-                if (isNaN(d.getTime())) return '';
+                return isNaN(d.getTime()) ? null : d;
+            }
 
-                const y = d.getFullYear();
-                const m = String(d.getMonth() + 1).padStart(2, '0');
-                const date = String(d.getDate()).padStart(2, '0');
+            function formatDateHeader(d) {
+                const days = ['日', '月', '火', '水', '木', '金', '土'];
+                return \`\${d.getFullYear()}年\${d.getMonth() + 1}月\${d.getDate()}日(\${days[d.getDay()]})\`;
+            }
+
+            function formatTime(d) {
                 const hh = String(d.getHours()).padStart(2, '0');
                 const mm = String(d.getMinutes()).padStart(2, '0');
+                return \`\${hh}:\${mm}\`;
+            }
 
-                return \`\${y}/\${m}/\${date} \${hh}:\${mm}\`;
+            function formatDate(d) {
+                return \`\${d.getMonth() + 1}/\${d.getDate()} \${formatTime(d)}\`;
             }
         `;
 
         let worker = null;
         let activeChat = null;
         let allChatRooms = [];
-        let currentMessages = [];
-        const PAGE_SIZE = 300;
-        let currentOffset = 0;
+        let rawMessages = [];
 
         function initWorker() {
             const blob = new Blob([workerCode], { type: 'application/javascript' });
@@ -480,9 +601,9 @@
                     document.getElementById('app-container').style.display = 'flex';
                     document.getElementById('btn-reset').style.display = 'inline-flex';
                 } else if (action === 'messagesLoaded') {
-                    const { totalCount, messages } = payload;
-                    currentMessages = messages;
-                    renderMessages(activeChat, messages, totalCount);
+                    rawMessages = payload.messages;
+                    document.getElementById('filter-panel').style.display = 'flex';
+                    applyFilters();
                 }
             };
 
@@ -493,7 +614,7 @@
             document.getElementById('status-bar').innerText = text;
         }
 
-        // --- フォルダドロップ（100件上限を解消した完全再帰検索） ---
+        // フォルダ・ファイル ドロップ処理 (100件上限解除)
         const dropZone = document.getElementById('drop-zone');
         dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
@@ -501,7 +622,7 @@
             e.preventDefault();
             dropZone.classList.remove('dragover');
             
-            updateStatus('フォルダ/ファイルをスキャン中...');
+            updateStatus('スキャン中...');
             const items = e.dataTransfer.items;
             const files = [];
 
@@ -520,9 +641,6 @@
 
             if (files.length > 0) {
                 await processFiles(files);
-            } else {
-                alert('フォルダからファイルを取得できませんでした');
-                updateStatus('エラー: ファイルの取得失敗');
             }
         });
 
@@ -542,10 +660,7 @@
         async function traverseFileTree(item, fileList) {
             if (item.isFile) {
                 return new Promise((resolve) => {
-                    item.file(file => {
-                        fileList.push(file);
-                        resolve();
-                    }, () => resolve());
+                    item.file(file => { fileList.push(file); resolve(); }, () => resolve());
                 });
             } else if (item.isDirectory) {
                 const dirReader = item.createReader();
@@ -560,7 +675,7 @@
         document.getElementById('dir-input').addEventListener('change', e => processFiles(Array.from(e.target.files)));
 
         async function processFiles(files) {
-            updateStatus(`検索された ${files.length} 件のファイルからデータベースを特定中...`);
+            updateStatus(`${files.length} 件のファイルからDBを特定中...`);
 
             let mainFile = files.find(f => f.name.toLowerCase() === 'line.sqlite') ||
                            files.find(f => f.name.toLowerCase() === 'talk.sqlite') ||
@@ -570,12 +685,10 @@
             let walFile = files.find(f => f.name.toLowerCase().endsWith('-wal'));
 
             if (!mainFile) {
-                alert('フォルダ内に有効なデータベースファイル (Line.sqlite / Talk.sqlite) が見つかりませんでした。');
-                updateStatus('エラー: DBファイル未検出');
+                alert('有効なLINEデータベースファイル (Line.sqlite または Talk.sqlite) が見つかりませんでした。');
+                updateStatus('エラー: DB未検出');
                 return;
             }
-
-            updateStatus(`データベース読み込み中: ${mainFile.name}...`);
 
             try {
                 const mainBuf = await mainFile.arrayBuffer();
@@ -586,7 +699,7 @@
                     payload: { mainBuf, walBuf }
                 }, [mainBuf, ...(walBuf ? [walBuf] : [])]);
             } catch (err) {
-                alert('ファイルの読み込みに失敗しました: ' + err.message);
+                alert('ファイル読み込み失敗: ' + err.message);
             }
         }
 
@@ -611,90 +724,112 @@
                     document.querySelectorAll('.chat-item').forEach(i => i.classList.remove('active'));
                     el.classList.add('active');
                     activeChat = item;
-                    currentOffset = Math.max(0, item.count - PAGE_SIZE);
-                    loadMessagesForActiveChat();
+                    loadMessages();
                 };
                 container.appendChild(el);
             });
         }
 
-        function loadMessagesForActiveChat() {
+        function filterChatList(query) {
+            const q = query.toLowerCase();
+            const filtered = allChatRooms.filter(c => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q));
+            renderChatList(filtered);
+        }
+
+        function loadMessages() {
             if (!activeChat) return;
-            updateStatus(`メッセージを読み込み中: ${activeChat.name}...`);
+            updateStatus(`読み込み中: ${activeChat.name}...`);
             worker.postMessage({
                 action: 'getMessages',
-                payload: {
-                    chatId: activeChat.id,
-                    limit: PAGE_SIZE,
-                    offset: currentOffset
-                }
+                payload: { chatId: activeChat.id }
             });
         }
 
-        function renderMessages(chat, messages, totalCount) {
-            updateStatus(`表示中: ${chat.name} (${messages.length} / ${totalCount} 件)`);
+        function applyFilters() {
+            if (!rawMessages) return;
+
+            const keyword = document.getElementById('filter-keyword').value.toLowerCase();
+            const senderFilter = document.getElementById('filter-sender').value;
+            const typeFilter = document.getElementById('filter-type').value;
+
+            const filtered = rawMessages.filter(m => {
+                if (keyword && !m.text.toLowerCase().includes(keyword) && !m.senderName.toLowerCase().includes(keyword)) return false;
+                if (senderFilter === 'me' && !m.isMe) return false;
+                if (senderFilter === 'other' && m.isMe) return false;
+                if (typeFilter === 'text' && m.isMedia) return false;
+                if (typeFilter === 'media' && !m.isMedia) return false;
+                return true;
+            });
+
+            renderMessagesUI(filtered);
+        }
+
+        function renderMessagesUI(messages) {
             const view = document.getElementById('chat-view');
-            
+            document.getElementById('empty-state').style.display = 'none';
+
             document.getElementById('btn-export-csv').style.display = 'inline-flex';
             document.getElementById('btn-export-txt').style.display = 'inline-flex';
             document.getElementById('btn-print').style.display = 'inline-flex';
 
-            view.innerHTML = `
-                <div class="chat-view-header">
-                    <h2>${escapeHtml(chat.name)}</h2>
-                    <div class="info">全 ${totalCount} 件のメッセージ</div>
-                </div>
-                <div id="messages-container"></div>
-            `;
-
-            const container = document.getElementById('messages-container');
-
-            if (currentOffset > 0) {
-                const pageBar = document.createElement('div');
-                pageBar.className = 'pagination-bar';
-                pageBar.innerHTML = `<button class="pagination-btn">▲ 過去のメッセージをさらに読み込む (${currentOffset} 件残あり)</button>`;
-                pageBar.onclick = () => {
-                    currentOffset = Math.max(0, currentOffset - PAGE_SIZE);
-                    loadMessagesForActiveChat();
-                };
-                container.appendChild(pageBar);
+            let msgContainer = document.getElementById('messages-container');
+            if (!msgContainer) {
+                msgContainer = document.createElement('div');
+                msgContainer.id = 'messages-container';
+                view.appendChild(msgContainer);
             }
+            msgContainer.innerHTML = '';
+
+            let lastDateStr = '';
 
             messages.forEach(m => {
-                const group = document.createElement('div');
-                group.className = `msg-group ${m.isMe ? 'me' : 'other'}`;
-                group.innerHTML = `
-                    <div class="msg-info">${escapeHtml(m.senderName)} • ${m.time}</div>
-                    <div class="bubble ${m.isMedia ? 'media-bubble' : ''}">${escapeHtml(m.text)}</div>
+                // 日付ヘッダー挿入
+                if (m.dateStr && m.dateStr !== lastDateStr) {
+                    const dateDiv = document.createElement('div');
+                    dateDiv.className = 'date-divider';
+                    dateDiv.innerText = m.dateStr;
+                    msgContainer.appendChild(dateDiv);
+                    lastDateStr = m.dateStr;
+                }
+
+                // LINEメッセージ行作成
+                const row = document.createElement('div');
+                row.className = `msg-row ${m.isMe ? 'me' : 'other'}`;
+
+                let avatarHtml = !m.isMe ? `<div class="msg-avatar">${escapeHtml(m.senderName.charAt(0))}</div>` : '';
+                let senderNameHtml = !m.isMe ? `<div class="msg-sender-name">${escapeHtml(m.senderName)}</div>` : '';
+
+                row.innerHTML = `
+                    ${avatarHtml}
+                    <div class="msg-content">
+                        ${senderNameHtml}
+                        <div class="msg-body-wrap">
+                            <div class="bubble ${m.isMedia ? 'media-bubble' : ''}">${escapeHtml(m.text)}</div>
+                            <div class="msg-time">${m.timeStr}</div>
+                        </div>
+                    </div>
                 `;
-                container.appendChild(group);
+                msgContainer.appendChild(row);
             });
 
-            if (currentOffset >= totalCount - PAGE_SIZE) {
-                container.scrollTop = container.scrollHeight;
-            }
-        }
-
-        function filterChatList(q) {
-            const query = q.toLowerCase();
-            const filtered = allChatRooms.filter(c => c.name.toLowerCase().includes(query) || c.id.toLowerCase().includes(query));
-            renderChatList(filtered);
+            updateStatus(`表示中: ${activeChat.name} (${messages.length} / ${rawMessages.length} 件)`);
+            msgContainer.scrollTop = msgContainer.scrollHeight;
         }
 
         function exportChatCSV() {
-            if (!currentMessages.length || !activeChat) return;
-            let csv = "\uFEFF日時,送信者,メッセージ,メディア種別\n";
-            currentMessages.forEach(m => {
-                csv += `"${m.time}","${m.senderName}","${m.text.replace(/"/g, '""')}","${m.isMedia ? 'メディア' : 'テキスト'}"\n`;
+            if (!rawMessages.length || !activeChat) return;
+            let csv = "\uFEFF日付,時間,送信者,メッセージ,種別\n";
+            rawMessages.forEach(m => {
+                csv += `"${m.dateStr}","${m.timeStr}","${m.senderName}","${m.text.replace(/"/g, '""')}","${m.isMedia ? 'メディア' : 'テキスト'}"\n`;
             });
             downloadFile(csv, `${activeChat.name}_トーク履歴.csv`, 'text/csv');
         }
 
         function exportChatTXT() {
-            if (!currentMessages.length || !activeChat) return;
+            if (!rawMessages.length || !activeChat) return;
             let txt = `==== ${activeChat.name} トーク履歴 ====\n\n`;
-            currentMessages.forEach(m => {
-                txt += `[${m.time}] ${m.senderName}:\n${m.text}\n\n`;
+            rawMessages.forEach(m => {
+                txt += `[${m.dateStr} ${m.timeStr}] ${m.senderName}:\n${m.text}\n\n`;
             });
             downloadFile(txt, `${activeChat.name}_トーク履歴.txt`, 'text/plain');
         }

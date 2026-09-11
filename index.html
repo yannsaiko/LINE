@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク・全関連ファイル自動検索＆深層解析ツール (修正版)</title>
+    <title>LINE トーク・全関連ファイル自動検索＆深層解析ツール (高速化版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -59,10 +59,11 @@
             margin: 10px auto;
             width: 90%;
             max-width: 800px;
-            font-size: 13px;
-            color: #555;
+            font-size: 14px;
+            color: #333;
             text-align: center;
             line-height: 1.6;
+            font-weight: bold;
         }
 
         #app-container {
@@ -306,7 +307,7 @@
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
         <h3>📁 ここにLINEのデータフォルダ / ファイル群をドロップ</h3>
         <p style="color: #666; font-size: 13px;">
-            <code>Line.sqlite</code> / <code>Line.sqlite-wal</code> / <code>Line.sqlite-shm</code> / 画像・動画メディア / 添付ファイルを全自動検出・整理します（何層重なったフォルダーでも深層探索）
+            <code>Line.sqlite</code> / <code>Line.sqlite-wal</code> / メディア / バックアップフォルダを全自動検出します
         </p>
         <input type="file" id="file-input" webkitdirectory directory multiple>
     </div>
@@ -371,8 +372,9 @@
             const items = e.dataTransfer.items;
             let filesToProcess = [];
 
+            document.getElementById('status-msg').innerText = 'フォルダー構造を走査中...';
+
             if (items && items.length > 0) {
-                document.getElementById('status-msg').innerText = 'フォルダー構造を最深部まで自動検索中...';
                 let entryPromises = [];
                 for (let i = 0; i < items.length; i++) {
                     const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
@@ -432,79 +434,105 @@
             return files;
         }
 
+        // 先頭16バイトのみを軽量読み込みしてSQLite判定（ブラウザ停止防止）
+        async function isSqliteHeader(file) {
+            if (file.size < 100) return false;
+            try {
+                const blobSlice = file.slice(0, 16);
+                const arrayBuffer = await blobSlice.arrayBuffer();
+                const uInt8Array = new Uint8Array(arrayBuffer);
+                const headerStr = String.fromCharCode.apply(null, uInt8Array);
+                return headerStr.startsWith('SQLite format 3');
+            } catch (e) {
+                return false;
+            }
+        }
+
         async function handleFiles(fileList) {
             if (!SQL) return;
-            document.getElementById('status-msg').innerText = '各種ファイルを識別＆深層解析中...';
+            const statusEl = document.getElementById('status-msg');
 
             detectedRegistry = { databases: [], walShm: [], media: [], configs: [] };
             accounts = [];
 
-            for (let file of fileList) {
+            const totalFiles = fileList.length;
+
+            for (let i = 0; i < totalFiles; i++) {
+                const file = fileList[i];
                 const name = file.name.toLowerCase();
                 const path = file.webkitRelativePath || file.name;
                 const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+
+                if (i % 20 === 0 || i === totalFiles - 1) {
+                    statusEl.innerText = `ファイルを高速スキャン中... (${i + 1} / ${totalFiles} 件完了)`;
+                    await new Promise(r => setTimeout(r, 0)); // 画面更新用のイールド
+                }
 
                 if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) {
                     detectedRegistry.walShm.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
                 }
 
-                if (/\.(jpg|jpeg|png|gif|webp|mp4|mov|m4a|aud|aac|mp3|pdf|docx|zip)$/i.test(name)) {
+                if (/\.(jpg|jpeg|png|gif|webp|mp4|mov|m4a|aud|aac|mp3|pdf|docx|zip|heic|db-journal)$/i.test(name)) {
                     detectedRegistry.media.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
                 }
 
-                if (/\.(plist|xml|json|pref)$/i.test(name) || name.includes('preference')) {
+                if (/\.(plist|xml|json|pref|txt|log|bak)$/i.test(name) || name.includes('preference')) {
                     detectedRegistry.configs.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
                 }
 
-                try {
-                    const arrayBuffer = await file.arrayBuffer();
-                    const uInt8Array = new Uint8Array(arrayBuffer);
-                    
-                    if (uInt8Array.length > 15) {
-                        const headerStr = String.fromCharCode.apply(null, uInt8Array.subarray(0, 15));
-                        if (headerStr.includes('SQLite format')) {
-                            const dbInstance = new SQL.Database(uInt8Array);
-                            const dbInfo = analyzeDatabase(dbInstance);
+                // SQLiteヘッダー高速チェック
+                const isSqlite = await isSqliteHeader(file);
+                if (isSqlite) {
+                    try {
+                        statusEl.innerText = `データベース解析中: ${file.name} (${sizeMB} MB)...`;
+                        await new Promise(r => setTimeout(r, 0));
 
-                            if (dbInfo.msgTable) {
-                                accounts.push({
-                                    fileName: file.name,
-                                    filePath: path,
-                                    fileSize: `${sizeMB} MB`,
-                                    db: dbInstance,
-                                    info: dbInfo
-                                });
-                                detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: true });
-                            } else {
-                                detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: false });
-                            }
+                        const arrayBuffer = await file.arrayBuffer();
+                        const uInt8Array = new Uint8Array(arrayBuffer);
+                        const dbInstance = new SQL.Database(uInt8Array);
+                        const dbInfo = analyzeDatabase(dbInstance);
+
+                        if (dbInfo.msgTable) {
+                            accounts.push({
+                                fileName: file.name,
+                                filePath: path,
+                                fileSize: `${sizeMB} MB`,
+                                db: dbInstance,
+                                info: dbInfo
+                            });
+                            detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: true });
+                        } else {
+                            detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: false });
                         }
+                    } catch (e) {
+                        console.warn(`スキップ (${file.name}):`, e);
                     }
-                } catch (e) {
-                    console.warn(`スキップ (${file.name}):`, e);
                 }
             }
 
             if (accounts.length === 0) {
-                document.getElementById('status-msg').innerHTML = `
+                statusEl.innerHTML = `
                     <span style="color:red; font-weight:bold; font-size:15px;">有効な LINE データベース (Line.sqlite等) が見つかりませんでした。</span><br><br>
-                    <div style="font-size:12px; color:#444; text-align:left; background:#fff; padding:15px; border-radius:8px; border:1px solid #ffcccc;">
-                        <strong>🔍 検出状況:</strong> SQLite DB: ${detectedRegistry.databases.length}件 / WALキャッシュ: ${detectedRegistry.walShm.length}件 / メディア: ${detectedRegistry.media.length}件<br><br>
-                        <strong>考えられる原因:</strong>
+                    <div style="font-size:12px; color:#444; text-align:left; background:#fff; padding:15px; border-radius:8px; border:1px solid #ffcccc; max-width:600px; margin:0 auto;">
+                        <strong>🔍 検出結果内訳 (計 ${totalFiles} 件):</strong><br>
+                        ・SQLite DBファイル: ${detectedRegistry.databases.length} 件<br>
+                        ・WALキャッシュ: ${detectedRegistry.walShm.length} 件<br>
+                        ・画像/動画/添付: ${detectedRegistry.media.length} 件<br>
+                        ・設定/その他: ${detectedRegistry.configs.length} 件<br><br>
+                        <strong>💡 対処法:</strong>
                         <ul style="margin:5px 0 0 20px; padding:0;">
-                            <li>LINEのトークデータが含まれていない別のSQLiteファイルをドロップしている</li>
-                            <li>iTunes/Finderバックアップ時に「ローカルバックアップを暗号化」にチェックが入っていたため、ファイル自体が暗号化されている</li>
-                            <li>テキストファイル（<code>[LINE] 〇〇とのトーク.txt</code>）をドロップしている</li>
+                            <li><code>Line.sqlite</code> という名前のファイルが直接含まれるフォルダを選択しているか確認してください。</li>
+                            <li>iPhoneバックアップの場合、「暗号化」を有効にして保存したデータは解析できません。</li>
                         </ul>
                     </div>`;
                 return;
             }
 
             dropZone.style.display = 'none';
-            document.getElementById('status-msg').style.display = 'none';
+            statusEl.style.display = 'none';
             document.getElementById('app-container').style.display = 'flex';
             document.getElementById('btn-print').style.display = 'block';
             document.getElementById('btn-reset').style.display = 'block';
@@ -534,7 +562,6 @@
             `;
         }
 
-        // 高度化されたデータベーススキーマ解読関数
         function analyzeDatabase(db) {
             let info = { 
                 allTables: [],
@@ -544,7 +571,6 @@
             };
 
             try {
-                // テーブルだけでなく VIEW も取得対象に含める
                 const res = db.exec("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')");
                 if (!res.length) return info;
                 info.allTables = res[0].values.map(r => r[0]);
@@ -561,12 +587,10 @@
                     return null;
                 };
 
-                // 各OS/パターンのメッセージテーブル候補
                 info.msgTable = findTable(['ZMESSAGE', 'Z_MESSAGE', 'CHAT_HISTORY', 'MESSAGES', 'MESSAGE', 'CHAT_MESSAGES', 'TALK_HISTORY', 'MSG']);
                 info.chatTable = findTable(['ZCHAT', 'Z_CHAT', 'CHATS', 'CHAT_ROOMS', 'ROOMS', 'CHAT', 'TALK_ROOM']);
                 info.userTable = findTable(['ZUSER', 'Z_USER', 'ZCONTACT', 'Z_CONTACT', 'USERS', 'CONTACTS', 'FRIENDS', 'BUDDY', 'USER']);
 
-                // フォールバック解析: テーブル名で検出できない場合、全テーブルのカラムを自動探索
                 if (!info.msgTable) {
                     for (let table of info.allTables) {
                         try {

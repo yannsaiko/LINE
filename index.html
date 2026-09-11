@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴マルチビューア (名前解決強化版)</title>
+    <title>LINE トーク履歴マルチビューア</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f5f5f5; color: #333; }
         header { background: #06c755; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         header h1 { font-size: 18px; font-weight: bold; }
+        .header-btns { display: flex; gap: 8px; }
         .btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; }
         .btn:hover { background: rgba(255,255,255,0.3); }
         
@@ -25,6 +26,10 @@
         .sidebar-label { font-size: 11px; font-weight: bold; color: #666; }
         select.styled-select, input.styled-input { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; background: white; }
         
+        .add-files-bar { display: flex; gap: 6px; }
+        .btn-small { background: #edf2f7; color: #2d3748; border: 1px solid #cbd5e0; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; flex: 1; text-align: center; }
+        .btn-small:hover { background: #e2e8f0; }
+
         #chat-list { flex: 1; overflow-y: auto; }
         .chat-item { padding: 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.15s; }
         .chat-item:hover { background: #f8f8f8; }
@@ -70,29 +75,35 @@
 <body>
     <header>
         <h1>LINE トーク履歴マルチビューア</h1>
-        <button id="btn-reset" class="btn" style="display:none;" onclick="location.reload()">リセット</button>
+        <div class="header-btns">
+            <button id="btn-reset" class="btn" style="display:none;" onclick="location.reload()">リセット</button>
+        </div>
     </header>
 
     <div id="drop-zone">
         <h2>ファイルまたはフォルダーをドロップ</h2>
-        <p style="margin-top:8px; color:#666;">Line.sqlite または Talk.sqlite が入ったフォルダーを丸ごとドラッグ＆ドロップ可能です</p>
+        <p style="margin-top:8px; color:#666;">Line.sqlite や Talk.sqlite が入ったフォルダーを丸ごとドラッグ＆ドロップ可能です</p>
         <div class="file-inputs">
-            <label>ファイルを選択<input type="file" id="file-input" multiple accept=".sqlite,.db"></label>
-            <label>フォルダーを選択<input type="file" id="folder-input" webkitdirectory directory multiple></label>
+            <label>ファイルを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db"></label>
+            <label>フォルダーを選択<input type="file" class="folder-input-elem" webkitdirectory directory multiple></label>
         </div>
     </div>
 
     <div id="app-container">
         <div id="sidebar">
             <div class="sidebar-section">
+                <div class="add-files-bar">
+                    <label class="btn-small">＋ 追加ファイル<input type="file" class="file-input-elem" multiple accept=".sqlite,.db" style="display:none;"></label>
+                    <label class="btn-small">＋ 追加フォルダー<input type="file" class="folder-input-elem" webkitdirectory directory multiple style="display:none;"></label>
+                </div>
                 <div>
-                    <span class="sidebar-label">📂 ファイル/フォルダー選択</span>
+                    <span class="sidebar-label">📂 ファイル選択</span>
                     <select id="file-filter" class="styled-select" onchange="applyFilters()">
                         <option value="ALL">すべてのファイル/フォルダー</option>
                     </select>
                 </div>
                 <div>
-                    <span class="sidebar-label">👤 トーク相手/フォルダー内検索</span>
+                    <span class="sidebar-label">👤 トーク相手/検索</span>
                     <input type="text" id="chat-search" class="styled-input" placeholder="名前またはファイル名で絞り込み..." oninput="applyFilters()">
                 </div>
             </div>
@@ -122,6 +133,7 @@
         let allChatRooms = [];
         let activeChat = null;
         let rawMessages = [];
+        let fileCounter = 0;
 
         window.addEventListener('DOMContentLoaded', async () => {
             try {
@@ -137,10 +149,10 @@
 
         function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
 
-        const dropZone = document.getElementById('drop-zone');
-        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-        dropZone.addEventListener('drop', async e => {
+        // ドラッグ＆ドロップイベント設定（画面全体・ドロップゾーン両方対応）
+        window.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        window.addEventListener('dragleave', e => { if (e.clientX === 0 && e.clientY === 0) dropZone.classList.remove('dragover'); });
+        window.addEventListener('drop', async e => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
             updateStatus('フォルダー・ファイルを解析中...');
@@ -148,8 +160,9 @@
             if (files.length > 0) processFiles(files);
         });
 
-        document.getElementById('file-input').addEventListener('change', e => processFiles(Array.from(e.target.files)));
-        document.getElementById('folder-input').addEventListener('change', e => processFiles(Array.from(e.target.files)));
+        const dropZone = document.getElementById('drop-zone');
+        document.querySelectorAll('.file-input-elem').forEach(el => el.addEventListener('change', e => processFiles(Array.from(e.target.files))));
+        document.querySelectorAll('.folder-input-elem').forEach(el => el.addEventListener('change', e => processFiles(Array.from(e.target.files))));
 
         async function getFilesFromDataTransfer(dataTransfer) {
             const files = [];
@@ -180,7 +193,10 @@
                     const readEntries = () => {
                         dirReader.readEntries(async entries => {
                             if (!entries || entries.length === 0) resolve();
-                            else { await Promise.all(entries.map(entry => traverseFileTree(entry, files))); readEntries(); }
+                            else {
+                                await Promise.all(entries.map(entry => traverseFileTree(entry, files)));
+                                readEntries();
+                            }
                         }, () => resolve());
                     };
                     readEntries();
@@ -188,7 +204,22 @@
             });
         }
 
-        function isSqliteFile(buffer) {
+        // 画像やメディア等の不要ファイルを瞬時に除外するフィルター
+        function isCandidateDbFile(file) {
+            if (!file || file.size < 512) return false; // 512バイト未満の空/小ファイルはスキップ
+            const name = file.name.toLowerCase();
+            const ext = name.split('.').pop();
+
+            // 不要な拡張子を高速除外
+            const skipExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'm4a', 'mp3', 'aac', 'plist', 'json', 'xml', 'txt', 'pdf', 'zip', 'dat', 'thumb', 'tmp'];
+            if (skipExts.includes(ext)) return false;
+
+            // 拡張子が sqlite / db / 無拡張子 / LINE関連名 の場合は候補とする
+            return name.endsWith('.sqlite') || name.endsWith('.db') || name.endsWith('.sqlite3') || 
+                   name.includes('line') || name.includes('talk') || name.includes('manifest') || !name.includes('.');
+        }
+
+        function isSqliteFileHeader(buffer) {
             if (buffer.byteLength < 16) return false;
             const arr = new Uint8Array(buffer, 0, 16);
             const magic = [83, 81, 76, 105, 116, 101, 32, 102, 111, 114, 109, 97, 116, 32, 51, 0];
@@ -197,24 +228,31 @@
 
         async function processFiles(files) {
             if (!SQL) return;
-            updateStatus(`スキャン中: ${files.length} 件のファイルを解析中...`);
-            fileMap = {};
-            allChatRooms = [];
+
+            // 事前フィルターで対象ファイルを抽出
+            const candidateFiles = files.filter(isCandidateDbFile);
+            updateStatus(`スキャン中: ${files.length} 件から DB候補 ${candidateFiles.length} 件を検証...`);
+
+            if (candidateFiles.length === 0) {
+                alert('選択されたフォルダー/ファイル内にSQLite形式のLINEデータベースが見つかりませんでした。');
+                updateStatus('エラー: 対象データベース未検出');
+                return;
+            }
 
             const fileFilterSelect = document.getElementById('file-filter');
-            fileFilterSelect.innerHTML = '<option value="ALL">すべてのファイル/フォルダー</option>';
             let validDbCount = 0;
 
-            for (let i = 0; i < files.length; i++) {
-                const f = files[i];
-                const fileId = 'file_' + i;
+            for (let i = 0; i < candidateFiles.length; i++) {
+                const f = candidateFiles[i];
+                fileCounter++;
+                const fileId = 'file_' + fileCounter;
                 const displayLabel = f.webkitRelativePath || f.fullPath || f.name;
 
                 try {
+                    updateStatus(`[${i + 1}/${candidateFiles.length}] 解析中: ${f.name}`);
                     const slice = await f.slice(0, 16).arrayBuffer();
-                    if (!isSqliteFile(slice)) continue;
+                    if (!isSqliteFileHeader(slice)) continue;
 
-                    updateStatus(`[${i + 1}/${files.length}] 解析中: ${f.name}`);
                     const buf = await f.arrayBuffer();
                     let db = new SQL.Database(new Uint8Array(buf));
                     const schema = detectSchema(db);
@@ -238,9 +276,9 @@
                 }
             }
 
-            if (validDbCount === 0) {
-                alert('LINEの有効なデータベースが見つかりませんでした。');
-                updateStatus('エラー: 有効なDB未検出');
+            if (validDbCount === 0 && allChatRooms.length === 0) {
+                alert('LINEのメッセージテーブル（ZMESSAGE / chat_history）を含むデータベースが見つかりませんでした。');
+                updateStatus('エラー: LINE DB未検出');
                 return;
             }
 
@@ -248,7 +286,7 @@
             document.getElementById('drop-zone').style.display = 'none';
             document.getElementById('app-container').style.display = 'flex';
             document.getElementById('btn-reset').style.display = 'inline-flex';
-            updateStatus(`解析完了: ${allChatRooms.length} 件のトークルームを発見`);
+            updateStatus(`解析完了: 合計 ${allChatRooms.length} 件のトークルームを発見`);
         }
 
         function detectSchema(db) {
@@ -294,8 +332,6 @@
                         const cols = res.columns.map(c => c.toUpperCase());
                         const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID' || c === '_ID');
                         const midIdx = cols.findIndex(c => c.includes('MID'));
-                        
-                        // 名前のカラム（カスタム名・表示名を優先探査）
                         const customIdx = cols.findIndex(c => c === 'ZCUSTOMNAME' || c === 'CUSTOM_NAME');
                         const nameIdx = cols.findIndex(c => c === 'ZNAME' || c === 'DISPLAY_NAME' || c === 'NAME');
 
@@ -344,16 +380,13 @@
                 const chatId = String(r[0]);
                 let name = chatMap[chatId];
 
-                // 1対1トーク等でZCHATのNameが無い場合、メッセージ内の相手(自分以外)の送信者IDを探して名前解決
                 if (!name || name === 'null') {
                     try {
                         const safeId = chatId.replace(/'/g, "''");
-                        let senderQuery = '';
-                        if (sch.isMeCol) {
-                            senderQuery = `SELECT "${sch.senderCol}" FROM "${sch.msgTable}" WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' AND ("${sch.isMeCol}" = 0 OR "${sch.isMeCol}" = '0') AND "${sch.senderCol}" IS NOT NULL AND "${sch.senderCol}" != '' LIMIT 1`;
-                        } else {
-                            senderQuery = `SELECT "${sch.senderCol}" FROM "${sch.msgTable}" WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' AND "${sch.senderCol}" IS NOT NULL AND "${sch.senderCol}" != '' LIMIT 1`;
-                        }
+                        let senderQuery = sch.isMeCol 
+                            ? `SELECT "${sch.senderCol}" FROM "${sch.msgTable}" WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' AND ("${sch.isMeCol}" = 0 OR "${sch.isMeCol}" = '0') AND "${sch.senderCol}" IS NOT NULL AND "${sch.senderCol}" != '' LIMIT 1`
+                            : `SELECT "${sch.senderCol}" FROM "${sch.msgTable}" WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' AND "${sch.senderCol}" IS NOT NULL AND "${sch.senderCol}" != '' LIMIT 1`;
+                        
                         const sRes = db.exec(senderQuery)[0];
                         if (sRes && sRes.values && sRes.values.length > 0) {
                             const partnerId = String(sRes.values[0][0]);

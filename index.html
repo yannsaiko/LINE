@@ -120,14 +120,6 @@
             flex: 1; background: var(--bg-color);
             display: flex; flex-direction: column; position: relative;
         }
-        .chat-view-header {
-            background: white; padding: 10px 20px;
-            border-bottom: 1px solid #ddd; display: flex;
-            justify-content: space-between; align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05); z-index: 5;
-        }
-        .chat-view-header h2 { font-size: 16px; color: #111; font-weight: bold; }
-        .chat-view-header .info { font-size: 11px; color: #666; }
 
         /* フィルターパネル */
         #filter-panel {
@@ -335,8 +327,8 @@
                 }
                 else if (action === 'getMessages') {
                     try {
-                        const { chatId } = payload;
-                        const result = fetchAllMessages(db, schema, chatId);
+                        const { chatId, chatName } = payload;
+                        const result = fetchAllMessages(db, schema, chatId, chatName);
                         self.postMessage({ action: 'messagesLoaded', payload: result });
                     } catch (err) {
                         self.postMessage({ action: 'error', error: err.message });
@@ -381,44 +373,72 @@
             }
 
             function loadDictionaries(db, sch) {
-                userMap = {}; chatMap = {};
-                
-                // ユーザー名マップ作成 (iOS & Android)
+                userMap = {};
+                chatMap = {};
+
+                // 1. ユーザー辞書 (ZUSER / contacts)
                 if (sch.userTable) {
                     try {
                         const res = db.exec(\`SELECT * FROM "\${sch.userTable}"\`)[0];
                         if (res) {
                             const cols = res.columns.map(c => c.toUpperCase());
                             const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID');
-                            const midIdx = cols.findIndex(c => /ZMID|MID/i.test(c));
-                            const nameIdx = cols.findIndex(c => /ZCUSTOMNAME|ZNAME|ZDISPLAYNAME|NAME|CUSTOM_NAME/i.test(c));
+                            const midIdx = cols.findIndex(c => c.includes('MID'));
+
+                            // 名前が存在しうる全カラムのインデックス（優先順）
+                            const nameCandidates = ['ZCUSTOMNAME', 'CUSTOM_NAME', 'ZNAME', 'NAME', 'ZDISPLAYNAME', 'DISPLAY_NAME', 'ZPHONETICNAME']
+                                .map(colName => cols.indexOf(colName))
+                                .filter(idx => idx !== -1);
 
                             res.values.forEach(r => {
-                                const name = r[nameIdx];
-                                if (name && String(name).trim() !== '') {
-                                    if (pkIdx !== -1 && r[pkIdx] !== null) userMap[String(r[pkIdx])] = String(name);
-                                    if (midIdx !== -1 && r[midIdx] !== null) userMap[String(r[midIdx])] = String(name);
+                                let name = null;
+                                for (let idx of nameCandidates) {
+                                    if (r[idx] !== null && r[idx] !== undefined && String(r[idx]).trim() !== '') {
+                                        name = String(r[idx]).trim();
+                                        break;
+                                    }
+                                }
+
+                                if (name) {
+                                    if (pkIdx !== -1 && r[pkIdx] !== null) userMap[String(r[pkIdx])] = name;
+                                    if (midIdx !== -1 && r[midIdx] !== null) userMap[String(r[midIdx])] = name;
                                 }
                             });
                         }
                     } catch(e){}
                 }
 
-                // トーク名マップ作成
+                // 2. チャット辞書 (ZCHAT / chat)
                 if (sch.chatTable) {
                     try {
                         const res = db.exec(\`SELECT * FROM "\${sch.chatTable}"\`)[0];
                         if (res) {
                             const cols = res.columns.map(c => c.toUpperCase());
                             const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'CHAT_ID' || c === 'ID');
-                            const midIdx = cols.findIndex(c => /ZMID|MID/i.test(c));
-                            const nameIdx = cols.findIndex(c => /ZNAME|TITLE|NAME/i.test(c));
+                            const midIdx = cols.findIndex(c => c.includes('MID'));
+
+                            const nameCandidates = ['ZNAME', 'NAME', 'TITLE', 'ZCUSTOMNAME', 'CUSTOM_NAME']
+                                .map(colName => cols.indexOf(colName))
+                                .filter(idx => idx !== -1);
 
                             res.values.forEach(r => {
-                                const name = r[nameIdx];
-                                if (name && String(name).trim() !== '') {
-                                    if (pkIdx !== -1 && r[pkIdx] !== null) chatMap[String(r[pkIdx])] = String(name);
-                                    if (midIdx !== -1 && r[midIdx] !== null) chatMap[String(r[midIdx])] = String(name);
+                                let name = null;
+                                for (let idx of nameCandidates) {
+                                    if (r[idx] !== null && r[idx] !== undefined && String(r[idx]).trim() !== '') {
+                                        name = String(r[idx]).trim();
+                                        break;
+                                    }
+                                }
+
+                                const pk = (pkIdx !== -1 && r[pkIdx] !== null) ? String(r[pkIdx]) : null;
+                                const mid = (midIdx !== -1 && r[midIdx] !== null) ? String(r[midIdx]) : null;
+
+                                if (name) {
+                                    if (pk) chatMap[pk] = name;
+                                    if (mid) chatMap[mid] = name;
+                                } else if (mid && userMap[mid]) {
+                                    if (pk) chatMap[pk] = userMap[mid];
+                                    chatMap[mid] = userMap[mid];
                                 }
                             });
                         }
@@ -441,18 +461,19 @@
                     const id = String(r[0]);
                     let name = chatMap[id] || userMap[id];
                     
-                    // 名前が取れない場合は送信者から推測
+                    // 名前が直接引けない場合はメッセージ送信者から推測
                     if (!name || name.trim() === '') {
                         try {
+                            const isMeCond = sch.isMeCol ? \`AND ("\${sch.isMeCol}" = 0 OR "\${sch.isMeCol}" = '0' OR "\${sch.isMeCol}" IS FALSE)\` : '';
                             const senderRes = db.exec(\`
                                 SELECT "\${sch.senderCol}" FROM "\${sch.msgTable}" 
-                                WHERE "\${sch.chatCol}" = '\${id}' AND "\${sch.senderCol}" IS NOT NULL 
-                                LIMIT 5
+                                WHERE CAST("\${sch.chatCol}" AS TEXT) = '\${id}' AND "\${sch.senderCol}" IS NOT NULL \${isMeCond}
+                                LIMIT 10
                             \`)[0];
                             if (senderRes && senderRes.values) {
                                 for (let s of senderRes.values) {
-                                    const sName = userMap[String(s[0])];
-                                    if (sName) { name = sName; break; }
+                                    const sId = String(s[0]);
+                                    if (userMap[sId]) { name = userMap[sId]; break; }
                                 }
                             }
                         } catch(e){}
@@ -470,7 +491,7 @@
                 });
             }
 
-            function fetchAllMessages(db, sch, chatId) {
+            function fetchAllMessages(db, sch, chatId, chatName) {
                 const safeId = String(chatId).replace(/'/g, "''");
 
                 const query = \`
@@ -488,6 +509,8 @@
                 const res = db.exec(query)[0];
                 if (!res || !res.values) return { messages: [] };
 
+                const fallbackName = (chatName && !chatName.startsWith('トーク (')) ? chatName : '相手';
+
                 const messages = res.values.map(r => {
                     const rawText = r[0] || '';
                     const isMeVal = r[1];
@@ -495,16 +518,14 @@
                     const rawTime = r[3];
                     const type = r[4];
 
-                    // 自分のメッセージ判定 (isMe)
                     let isMe = false;
                     if (sch.type === 'iOS') {
                         isMe = (isMeVal === 1 || isMeVal === '1' || isMeVal === true);
                     } else {
-                        // Android
                         isMe = (!senderId || senderId === '0' || senderId === 'null');
                     }
 
-                    let senderName = isMe ? '自分' : (userMap[senderId] || '相手');
+                    let senderName = isMe ? '自分' : (userMap[senderId] || fallbackName);
                     let displayText = rawText;
                     let isMedia = false;
 
@@ -548,7 +569,6 @@
                 let num = Number(ts);
                 if (isNaN(num) || num === 0) return null;
 
-                // iOS CoreData Epoch (2001-01-01起算) 補正
                 if (schemaType === 'iOS' || num < 1000000000) {
                     num = 978307200000 + (num * 1000);
                 } else if (num < 100000000000) {
@@ -614,7 +634,6 @@
             document.getElementById('status-bar').innerText = text;
         }
 
-        // フォルダ・ファイル ドロップ処理 (100件上限解除)
         const dropZone = document.getElementById('drop-zone');
         dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
@@ -741,7 +760,7 @@
             updateStatus(`読み込み中: ${activeChat.name}...`);
             worker.postMessage({
                 action: 'getMessages',
-                payload: { chatId: activeChat.id }
+                payload: { chatId: activeChat.id, chatName: activeChat.name }
             });
         }
 
@@ -783,7 +802,6 @@
             let lastDateStr = '';
 
             messages.forEach(m => {
-                // 日付ヘッダー挿入
                 if (m.dateStr && m.dateStr !== lastDateStr) {
                     const dateDiv = document.createElement('div');
                     dateDiv.className = 'date-divider';
@@ -792,7 +810,6 @@
                     lastDateStr = m.dateStr;
                 }
 
-                // LINEメッセージ行作成
                 const row = document.createElement('div');
                 row.className = `msg-row ${m.isMe ? 'me' : 'other'}`;
 

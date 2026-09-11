@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴 全情報抽出ツール</title>
+    <title>LINE トーク履歴 全メタデータ詳細表示ツール</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -39,7 +39,6 @@
         .btn-print { background-color: white; color: #00c300; display: none; }
         .btn-print:hover { background-color: #f0f0f0; }
         .btn-reset { background-color: rgba(255,255,255,0.2); color: white; display: none; }
-        .btn-reset:hover { background-color: rgba(255,255,255,0.3); }
 
         #drop-zone {
             margin: 30px auto;
@@ -52,7 +51,6 @@
             text-align: center;
             cursor: pointer;
         }
-        #drop-zone.hover { background-color: #e6f9e6; }
         #drop-zone input { display: none; }
 
         #status-msg {
@@ -125,33 +123,66 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
         .chat-header-info h2 { margin: 0 0 6px 0; font-size: 18px; }
-        .chat-header-details { font-size: 12px; color: #666; display: flex; gap: 15px; }
+        .chat-header-details { font-size: 12px; color: #666; display: flex; flex-wrap: wrap; gap: 15px; }
 
         .msg-row {
             display: flex;
             flex-direction: column;
-            margin-bottom: 14px;
+            margin-bottom: 16px;
             page-break-inside: avoid;
         }
         .msg-row.me { align-items: flex-end; }
         .msg-row.other { align-items: flex-start; }
-        .msg-sender { font-size: 12px; color: #666; margin-bottom: 2px; }
-        .msg-meta { font-size: 11px; color: #999; margin-bottom: 4px; }
+
+        .msg-header-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 3px;
+        }
+        .msg-sender-name {
+            font-size: 13px;
+            font-weight: bold;
+            color: #333;
+        }
+        .msg-timestamp {
+            font-size: 11px;
+            color: #888;
+        }
+
+        .bubble-container {
+            max-width: 80%;
+            display: flex;
+            flex-direction: column;
+        }
+        .me .bubble-container { align-items: flex-end; }
+        .other .bubble-container { align-items: flex-start; }
+
         .bubble {
-            max-width: 75%;
             padding: 10px 14px;
             border-radius: 16px;
             font-size: 14px;
             line-height: 1.5;
             white-space: pre-wrap;
             word-wrap: break-word;
+            width: 100%;
         }
-        .me .bubble { background-color: #e2ffc7; border-bottom-right-radius: 4px; }
-        .other .bubble { background-color: #ffffff; border: 1px solid #e0e0e0; border-bottom-left-radius: 4px; }
-        .non-text-bubble {
-            font-style: italic;
-            color: #777;
-            background-color: #eaeaea !important;
+        .me .bubble { background-color: #e2ffc7; border-bottom-right-radius: 4px; color: #000; }
+        .other .bubble { background-color: #ffffff; border: 1px solid #e0e0e0; border-bottom-left-radius: 4px; color: #000; }
+        .non-text-bubble { font-style: italic; color: #555; background-color: #eef2f5 !important; }
+
+        .msg-badge-bar {
+            display: flex;
+            gap: 6px;
+            margin-top: 4px;
+            font-size: 10px;
+        }
+        .badge {
+            background: #e4e6eb;
+            color: #4b4f56;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
         }
 
         @media print {
@@ -159,14 +190,14 @@
             body { background: white; }
             #app-container { display: block; }
             #chat-view { overflow: visible; padding: 0; background: white; }
-            .bubble { max-width: 85%; }
+            .bubble-container { max-width: 95%; }
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>LINE トーク履歴 全情報抽出ツール</h1>
+        <h1>LINE トーク履歴 全メタデータ詳細表示ツール</h1>
         <div class="header-actions">
             <button id="btn-reset" class="btn btn-reset" onclick="location.reload()">↺ 最初からやり直す</button>
             <button id="btn-print" class="btn btn-print" onclick="window.print()">🖨 印刷 (PDF保存)</button>
@@ -175,7 +206,7 @@
 
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
         <h3>📁 ここに「Line.sqlite」ファイルをドロップ</h3>
-        <p style="color: #666; font-size: 13px;">（すべてのトークルーム・履歴を全件表示します）</p>
+        <p style="color: #666; font-size: 13px;">（送信者の名前・正確な日時・メッセージID等の全情報を表示します）</p>
         <input type="file" id="file-input" accept=".sqlite,.db,application/vnd.sqlite3" multiple>
     </div>
     <div id="status-msg">ライブラリの初期化中...</div>
@@ -200,6 +231,20 @@
         let currentAccount = null;
         let SQL = null;
 
+        const CONTENT_TYPE_MAP = {
+            0: 'テキスト',
+            1: '画が像ぞう',
+            2: '動どう画が',
+            3: '音おん声せいメッセージ',
+            7: 'ロケーション (位い置ち情じょう報ほう)',
+            11: 'スタンプ',
+            12: '連れん絡らく先さき / カード',
+            13: 'ノート / アルバム通つう知ち',
+            14: 'グループ通つう話わ / 通つう話わ履り歴れき',
+            15: 'ファイル添てん付ぷ',
+            16: '公こう式しきアカウントリンク / リッチメッセ'
+        };
+
         initSqlJs().then(sqlEngine => {
             SQL = sqlEngine;
             document.getElementById('status-msg').innerText = '準じゅん備び完かん了りょう: Line.sqlite ファイルをドロップしてください';
@@ -210,11 +255,9 @@
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
 
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('hover'); });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('hover'));
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); });
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
-            dropZone.classList.remove('hover');
             if (e.dataTransfer.files.length > 0) handleFiles(Array.from(e.dataTransfer.files));
         });
         fileInput.addEventListener('change', (e) => {
@@ -274,7 +317,11 @@
         }
 
         function analyzeDatabase(db) {
-            let info = { msgTable: null, textCol: null, timeCol: null, isMeCol: null, chatCol: null, chatTable: null, error: null };
+            let info = { 
+                msgTable: null, textCol: null, timeCol: null, isMeCol: null, chatCol: null, 
+                senderCol: null, typeCol: null, chatTable: null, userTable: null, error: null 
+            };
+
             try {
                 const res = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
                 if (!res.length) {
@@ -283,21 +330,24 @@
                 }
                 const tables = res[0].values.map(r => r[0]);
 
-                info.msgTable = tables.find(t => t === 'ZMESSAGE' || t === 'chat_history' || t === 'messages') || tables.find(t => t.includes('MESSAGE'));
+                info.msgTable = tables.find(t => t === 'ZMESSAGE' || t === 'messages') || tables.find(t => t.includes('MESSAGE'));
                 info.chatTable = tables.find(t => t === 'ZCHAT' || t === 'chats') || tables.find(t => t.includes('CHAT'));
+                info.userTable = tables.find(t => t === 'ZUSER' || t === 'ZCONTACT' || t === 'users') || tables.find(t => t.includes('USER'));
 
                 if (info.msgTable) {
                     const colsRes = db.exec(`PRAGMA table_info(${info.msgTable})`);
                     if (colsRes.length) {
                         const cols = colsRes[0].values.map(c => c[1]);
-                        info.textCol = cols.find(c => c === 'ZTEXT' || c === 'text' || c === 'body' || c === 'content') || cols.find(c => c.includes('TEXT'));
-                        info.timeCol = cols.find(c => c === 'ZCREATEDTIME' || c === 'created_time' || c === 'timestamp' || c === 'date') || cols.find(c => c.includes('TIME') || c.includes('DATE'));
+                        info.textCol = cols.find(c => c === 'ZTEXT' || c === 'text' || c === 'body') || cols.find(c => c.includes('TEXT'));
+                        info.timeCol = cols.find(c => c === 'ZCREATEDTIME' || c === 'created_time' || c === 'timestamp') || cols.find(c => c.includes('TIME') || c.includes('DATE'));
                         info.isMeCol = cols.find(c => c === 'ZISFROMME' || c === 'is_from_me' || c === 'from_me');
-                        info.chatCol = cols.find(c => c === 'ZCHAT' || c === 'chat_id' || c === 'room_id');
+                        info.chatCol = cols.find(c => c === 'ZCHAT' || c === 'chat_id');
+                        info.senderCol = cols.find(c => c === 'ZSENDER' || c === 'sender_id' || c === 'sender');
+                        info.typeCol = cols.find(c => c === 'ZCONTENTTYPE' || c === 'ZTYPE' || c === 'type');
                     }
                 }
             } catch (e) {
-                info.error = "データベース解かい析せきエラー: " + e.message;
+                info.error = "解かい析せきエラー: " + e.message;
             }
             return info;
         }
@@ -319,10 +369,14 @@
             else if (ts > 1000000000) date = new Date(ts * 1000);
             else date = new Date(new Date('2001-01-01T00:00:00Z').getTime() + ts * 1000);
 
-            return date.toLocaleString('ja-JP', {
-                year: 'numeric', month: '2-digit', day: '2-digit',
-                hour: '2-digit', minute: '2-digit', second: '2-digit'
-            });
+            const yyyy = date.getFullYear();
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const dd = String(date.getDate()).padStart(2, '0');
+            const hh = String(date.getHours()).padStart(2, '0');
+            const min = String(date.getMinutes()).padStart(2, '0');
+            const ss = String(date.getSeconds()).padStart(2, '0');
+
+            return `${yyyy}/${mm}/${dd} ${hh}:${min}:${ss}`;
         }
 
         function escapeHtml(str) {
@@ -337,12 +391,12 @@
 
             try {
                 let res = [];
-                // 全ぜん件けん抽ちゅう出しゅつクエリ（WHEREによるフィルタリングなし）
                 if (info.chatTable) {
                     const joinQuery = `
                         SELECT 
                             c.Z_PK,
                             COALESCE(c.ZNAME, 'トークルーム ID: ' || c.Z_PK) as name,
+                            c.ZMID as chat_mid,
                             COUNT(m.ROWID) as msg_count,
                             MAX(m.${info.timeCol || 'ROWID'}) as last_time
                         FROM ${info.chatTable} c
@@ -350,7 +404,7 @@
                         GROUP BY c.Z_PK
                         ORDER BY last_time DESC
                     `;
-                    try { res = db.exec(joinQuery); } catch(e) { console.warn("全ぜん件けんJOINクエリ失しっ敗ぱい、単たん体たいフォールバックへ:", e); }
+                    try { res = db.exec(joinQuery); } catch(e) { console.warn("JOIN失しっ敗ぱい:", e); }
                 }
 
                 if (!res.length || !res[0].values.length) {
@@ -359,6 +413,7 @@
                         SELECT 
                             ${groupCol} as Z_PK,
                             'トークルーム ID: ' || ${groupCol} as name,
+                            '' as chat_mid,
                             COUNT(ROWID) as msg_count,
                             MAX(${info.timeCol || 'ROWID'}) as last_time
                         FROM ${info.msgTable}
@@ -374,20 +429,20 @@
                 }
 
                 res[0].values.forEach(row => {
-                    const [chatId, name, count, lastTime] = row;
+                    const [chatId, name, mid, count, lastTime] = row;
                     const item = document.createElement('div');
                     item.className = 'chat-item';
                     item.innerHTML = `
                         <div class="chat-name">${escapeHtml(name)}</div>
                         <div class="chat-meta">
-                            <span>総そうレコード数すう: ${count} 件けん</span>
+                            <span>全ぜんログ: ${count} 件けん</span>
                             <span>${formatTimestamp(lastTime)}</span>
                         </div>
                     `;
                     item.onclick = () => {
                         document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
                         item.classList.add('active');
-                        loadMessages(chatId, name, count);
+                        loadMessages(chatId, name, mid, count);
                     };
                     chatList.appendChild(item);
                 });
@@ -398,7 +453,7 @@
             }
         }
 
-        function loadMessages(chatId, chatName, totalMsgCount) {
+        function loadMessages(chatId, chatName, chatMid, totalMsgCount) {
             const chatView = document.getElementById('chat-view');
             const { db, info } = currentAccount;
 
@@ -406,27 +461,49 @@
                 <div class="chat-header-info">
                     <h2>${escapeHtml(chatName)}</h2>
                     <div class="chat-header-details">
-                        <span>内ない部ぶID (Z_PK): <strong>${chatId}</strong></span>
-                        <span>全ぜんログ件けん数すう: <strong>${totalMsgCount}</strong> 件けん</span>
+                        <span>内ない部ぶチャットID (Z_PK): <strong>${chatId}</strong></span>
+                        ${chatMid ? `<span>識しき別べつMID: <strong>${escapeHtml(chatMid)}</strong></span>` : ''}
+                        <span>総そう記き録ろく数すう: <strong>${totalMsgCount}</strong> 件けん</span>
                     </div>
                 </div>
             `;
 
             try {
-                let whereClause = info.chatCol ? `WHERE ${info.chatCol} = '${chatId}'` : "";
-                let timeOrder = info.timeCol ? `ORDER BY ${info.timeCol} ASC` : "";
+                let whereClause = info.chatCol ? `WHERE m.${info.chatCol} = '${chatId}'` : "";
+                let timeOrder = info.timeCol ? `ORDER BY m.${info.timeCol} ASC` : "";
 
-                // 全ぜんメッセージレコードを取しゅ得とく（テキスト有う無むに関かかわらず全ぜん件けん）
-                let query = `
-                    SELECT 
-                        ROWID,
-                        ${info.textCol || "''"},
-                        ${info.timeCol || "''"},
-                        ${info.isMeCol || '0'}
-                    FROM ${info.msgTable}
-                    ${whereClause}
-                    ${timeOrder}
-                `;
+                let query = '';
+                // ZUSER テーブルが存そん在ざいする場ば合あいは名な前まえを JOIN 結けつ合ごうする
+                if (info.userTable && info.senderCol) {
+                    query = `
+                        SELECT 
+                            m.ROWID,
+                            m.${info.textCol || "''"},
+                            m.${info.timeCol || "''"},
+                            m.${info.isMeCol || '0'},
+                            m.${info.senderCol || "''"},
+                            COALESCE(u.ZCUSTOMNAME, u.ZNAME, u.ZPHONETICNAME) as sender_name,
+                            m.${info.typeCol || '0'}
+                        FROM ${info.msgTable} m
+                        LEFT JOIN ${info.userTable} u ON m.${info.senderCol} = u.Z_PK
+                        ${whereClause}
+                        ${timeOrder}
+                    `;
+                } else {
+                    query = `
+                        SELECT 
+                            m.ROWID,
+                            m.${info.textCol || "''"},
+                            m.${info.timeCol || "''"},
+                            m.${info.isMeCol || '0'},
+                            m.${info.senderCol || "''"},
+                            '' as sender_name,
+                            m.${info.typeCol || '0'}
+                        FROM ${info.msgTable} m
+                        ${whereClause}
+                        ${timeOrder}
+                    `;
+                }
 
                 const res = db.exec(query);
                 if (!res.length || !res[0].values.length) {
@@ -435,27 +512,49 @@
                 }
 
                 res[0].values.forEach(row => {
-                    const [rowId, text, ts, isMe] = row;
+                    const [msgId, text, ts, isMe, senderId, senderName, contentType] = row;
                     const isMeBool = Boolean(isMe);
-                    const senderLabel = isMeBool ? '自じ分ぶん' : '相あい手て';
+
+                    // 送そう信しん者しゃ名めいの定てい義ぎ
+                    let displayName = '自じ分ぶん';
+                    if (!isMeBool) {
+                        if (senderName && String(senderName).trim() !== '') {
+                            displayName = senderName;
+                        } else if (senderId) {
+                            displayName = `送そう信しん者しゃ ID:${senderId}`;
+                        } else {
+                            displayName = '相あい手て (名な前まえ不ふ明めい)';
+                        }
+                    }
+
                     const timeStr = formatTimestamp(ts);
+                    const typeLabel = CONTENT_TYPE_MAP[contentType] || `タイプ:${contentType}`;
 
                     const hasText = text && String(text).trim() !== '';
-                    const displayText = hasText ? escapeHtml(text) : '[スタンプ / 画が像ぞう / メディア / システム通つう知ち]';
+                    const displayText = hasText ? escapeHtml(text) : `[${typeLabel}]`;
 
                     const msgRow = document.createElement('div');
                     msgRow.className = `msg-row ${isMeBool ? 'me' : 'other'}`;
                     msgRow.innerHTML = `
-                        <div class="msg-sender">${escapeHtml(senderLabel)} (ROWID: ${rowId})</div>
-                        <div class="msg-meta">${timeStr}</div>
-                        <div class="bubble ${hasText ? '' : 'non-text-bubble'}">${displayText}</div>
+                        <div class="msg-header-line">
+                            <span class="msg-sender-name">${escapeHtml(displayName)}</span>
+                            <span class="msg-timestamp">${timeStr}</span>
+                        </div>
+                        <div class="bubble-container">
+                            <div class="bubble ${hasText ? '' : 'non-text-bubble'}">${displayText}</div>
+                            <div class="msg-badge-bar">
+                                <span class="badge">MSG_ID: ${msgId}</span>
+                                ${senderId ? `<span class="badge">SENDER_PK: ${senderId}</span>` : ''}
+                                <span class="badge">TYPE: ${typeLabel}</span>
+                            </div>
+                        </div>
                     `;
                     chatView.appendChild(msgRow);
                 });
 
             } catch (e) {
                 console.error(e);
-                chatView.innerHTML += '<div style="color:red; margin-top:20px;">メッセージ読よみ込こみエラーが発はっ生せいしました。</div>';
+                chatView.innerHTML += '<div style="color:red; margin-top:20px;">全ぜん情じょう報ほうの取しゅ得とく中ちゅうにエラーが発はっ生せいしました。</div>';
             }
         }
     </script>

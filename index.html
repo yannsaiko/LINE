@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴 抽出・印刷ツール (複数対応版)</title>
-    <!-- sql.js (WebAssembly版ばんSQLite) CDN -->
+    <title>LINE トーク履歴 抽出・印刷ツール (エラー対策版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -18,8 +17,6 @@
             display: flex;
             flex-direction: column;
         }
-
-        /* ヘッダー */
         header {
             background-color: #00c300;
             color: white;
@@ -44,7 +41,6 @@
         .btn-reset { background-color: rgba(255,255,255,0.2); color: white; display: none; }
         .btn-reset:hover { background-color: rgba(255,255,255,0.3); }
 
-        /* ドロップエリア */
         #drop-zone {
             margin: 20px;
             padding: 50px 20px;
@@ -58,14 +54,11 @@
         #drop-zone.hover { background-color: #e6f9e6; }
         #drop-zone input { display: none; }
 
-        /* メインコンテンツ（2カラム） */
         #app-container {
             display: none;
             flex: 1;
             overflow: hidden;
         }
-
-        /* 左ひだり側がわ：トークルーム一いち覧らん & アカウント切きり替かえ */
         #sidebar {
             width: 320px;
             background: white;
@@ -73,8 +66,6 @@
             display: flex;
             flex-direction: column;
         }
-
-        /* アカウント切きり替かえドロップダウン */
         .account-selector-box {
             padding: 12px 16px;
             background: #f8f9fa;
@@ -97,12 +88,7 @@
             font-weight: bold;
             color: #333;
         }
-
-        #chat-list {
-            flex: 1;
-            overflow-y: auto;
-        }
-
+        #chat-list { flex: 1; overflow-y: auto; }
         .chat-item {
             padding: 14px 16px;
             border-bottom: 1px solid #f0f0f0;
@@ -114,7 +100,6 @@
         .chat-name { font-size: 15px; margin-bottom: 4px; color: #111; font-weight: 500; }
         .chat-meta { font-size: 12px; color: #888; display: flex; justify-content: space-between; }
 
-        /* 右みぎ側がわ：トーク内ない容よう表ひょう示じエリア */
         #chat-view {
             flex: 1;
             background: #f5f5f7;
@@ -128,8 +113,6 @@
             border-bottom: 2px solid #00c300;
             margin-bottom: 20px;
         }
-
-        /* 吹ふき出だしスタイル */
         .msg-row {
             display: flex;
             flex-direction: column;
@@ -149,25 +132,19 @@
             white-space: pre-wrap;
             word-wrap: break-word;
         }
-        .me .bubble {
-            background-color: #e2ffc7;
-            border-bottom-right-radius: 4px;
-        }
-        .other .bubble {
-            background-color: #ffffff;
-            border: 1px solid #e0e0e0;
-            border-bottom-left-radius: 4px;
-        }
-        .media-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            background: #eee;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #555;
+        .me .bubble { background-color: #e2ffc7; border-bottom-right-radius: 4px; }
+        .other .bubble { background-color: #ffffff; border: 1px solid #e0e0e0; border-bottom-left-radius: 4px; }
+        .error-log {
+            background: #fff0f0;
+            border: 1px solid #ffd0d0;
+            color: #d00000;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
         }
 
-        /* 印いん刷さつ用ようCSS */
         @media print {
             header, #sidebar, #drop-zone { display: none !important; }
             body { background: white; }
@@ -187,36 +164,32 @@
         </div>
     </header>
 
-    <!-- ファイル選せん択たく/ドロップエリア -->
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <h3>📁 ここに「Line.sqlite」ファイルをまとめてドロップ</h3>
-        <p style="color: #666;">（複数のファイルを一度に選択・ドロップできます）</p>
+        <h3>📁 ここに「Line.sqlite」ファイルをドロップ</h3>
+        <p style="color: #666;">（複数選択可）</p>
         <input type="file" id="file-input" accept=".sqlite,.db,application/vnd.sqlite3" multiple>
     </div>
 
-    <!-- アプリ本ほん体たい（トークルーム選せん択たく＆メッセージ表ひょう示じ） -->
     <div id="app-container">
         <div id="sidebar">
-            <!-- 複ふく数すう読よみ込こみ時ときの切きり替かえドロップダウン -->
             <div class="account-selector-box">
-                <label for="account-select">👤 表示するアカウント（ファイル）:</label>
+                <label for="account-select">👤 アカウント（ファイル）選択:</label>
                 <select id="account-select" onchange="switchAccount(this.value)"></select>
             </div>
             <div id="chat-list"></div>
         </div>
         <div id="chat-view">
             <div style="text-align: center; color: #888; margin-top: 50px;">
-                左側のリストから抽出したいトークルームを選択してください
+                左側のリストからトークルームを選択してください
             </div>
         </div>
     </div>
 
     <script>
-        let accounts = []; // 読よみ込こんだデータベース群ぐん [{ fileName, db }]
+        let accounts = [];
         let currentDb = null;
         let SQL = null;
 
-        // sql.js 初しょ期き化か
         initSqlJs({
             locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
         }).then(sql => { SQL = sql; });
@@ -224,56 +197,43 @@
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
 
-        // ドラッグ＆ドロップイベント
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('hover'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('hover'));
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('hover');
-            if (e.dataTransfer.files.length > 0) {
-                handleFiles(Array.from(e.dataTransfer.files));
-            }
+            if (e.dataTransfer.files.length > 0) handleFiles(Array.from(e.dataTransfer.files));
         });
-        
-        // ファイル選せん択たくダイアログイベント
         fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFiles(Array.from(e.target.files));
-            }
+            if (e.target.files.length > 0) handleFiles(Array.from(e.target.files));
         });
 
-        // 複ふく数すうファイルを一いっ括かつロード処しょ理り
         async function handleFiles(fileList) {
             accounts = [];
-            
-            for (let i = 0; i < fileList.length; i++) {
-                const file = fileList[i];
+            let errMsgs = [];
+
+            for (let file of fileList) {
                 try {
                     const arrayBuffer = await file.arrayBuffer();
                     const uInt8Array = new Uint8Array(arrayBuffer);
                     const dbInstance = new SQL.Database(uInt8Array);
                     
-                    accounts.push({
-                        fileName: file.name,
-                        db: dbInstance
-                    });
+                    accounts.push({ fileName: file.name, db: dbInstance });
                 } catch (error) {
-                    console.error(`ファイル ${file.name} の読よみ込こみエラー:`, error);
+                    errMsgs.push(`${file.name}: ${error.message}`);
                 }
             }
 
             if (accounts.length === 0) {
-                alert('有ゆう効こうな SQLite データベースファイルを読よみ込こめませんでした。');
+                alert("ファイル読よみ込こみエラー:\n" + errMsgs.join("\n"));
                 return;
             }
 
-            // UI切きり替かえ
             dropZone.style.display = 'none';
             document.getElementById('app-container').style.display = 'flex';
             document.getElementById('btn-print').style.display = 'block';
             document.getElementById('btn-reset').style.display = 'block';
 
-            // セレクトボックスの生せい成せい
             const selectEl = document.getElementById('account-select');
             selectEl.innerHTML = '';
             accounts.forEach((acc, index) => {
@@ -283,26 +243,22 @@
                 selectEl.appendChild(option);
             });
 
-            // 最さい初しょのアカウントのトークルーム一いち覧らんを表ひょう示じ
             switchAccount(0);
         }
 
-        // アカウント切きり替かえ関かん数すう
         function switchAccount(index) {
             const acc = accounts[index];
             if (!acc) return;
             currentDb = acc.db;
 
-            // 右みぎ側がわのトーク画が面めんをクリア
             document.getElementById('chat-view').innerHTML = `
                 <div style="text-align: center; color: #888; margin-top: 50px;">
-                    左ひだり側がわのリストから抽ちゅう出しゅつしたいトークルームを選せん択たくしてください
+                    左ひだり側がわのリストからトークルームを選せん択たくしてください
                 </div>`;
 
             loadChatRooms();
         }
 
-        // 日にち時じ変へん換かん関かん数すう
         function formatTimestamp(ts) {
             if (!ts) return '';
             let date;
@@ -316,44 +272,50 @@
             });
         }
 
-        // メッセージ種しゅ別べつ変へん換かん
-        function getMessageText(text, contentType) {
-            if (text) return escapeHtml(text);
-            switch (contentType) {
-                case 1: return '<span class="media-badge">📷 [画が像ぞう]</span>';
-                case 2: return '<span class="media-badge">🎥 [動どう画が]</span>';
-                case 3: return '<span class="media-badge">🎵 [音おん声せいメッセージ]</span>';
-                case 7: return '<span class="media-badge">🎨 [スタンプ]</span>';
-                case 14: return '<span class="media-badge">📁 [ファイル]</span>';
-                case 18: return '<span class="media-badge">📞 [通つう話わ履り歴れき]</span>';
-                default: return '<span class="media-badge">📎 [メディア/その他た]</span>';
-            }
-        }
-
         function escapeHtml(str) {
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
         }
 
-        // 選せん択たく中ちゅうアカウントのトークルーム一いち覧らんを読よみ込こみ
+        // 安あん全ぜんなトークルーム一いち覧らん取しゅ得とく（多た段だん階かいフォールバック）
         function loadChatRooms() {
             const chatList = document.getElementById('chat-list');
             chatList.innerHTML = '';
 
+            // パターン1: 通つう常じょうのZCHAT構こう造ぞう
+            let query1 = `
+                SELECT 
+                    c.Z_PK,
+                    COALESCE(c.ZNAME, c.ZMID, 'トークルーム ' || c.Z_PK) as name,
+                    COUNT(m.Z_PK) as msg_count,
+                    MAX(m.ZCREATEDTIME) as last_time
+                FROM ZCHAT c
+                JOIN ZMESSAGE m ON m.ZCHAT = c.Z_PK
+                GROUP BY c.Z_PK
+                ORDER BY last_time DESC
+            `;
+
+            // パターン2: フォールバック（ZCHATがない・紐ひも付づかない場ば合あい、ZMESSAGEから直ちょく接せつ全ぜん件けん）
+            let query2 = `
+                SELECT 
+                    1 as Z_PK,
+                    '全ぜんメッセージ履り歴れき (一いっ括かつ)' as name,
+                    COUNT(Z_PK) as msg_count,
+                    MAX(ZCREATEDTIME) as last_time
+                FROM ZMESSAGE
+            `;
+
             try {
-                const res = currentDb.exec(`
-                    SELECT 
-                        c.Z_PK,
-                        COALESCE(c.ZNAME, c.ZMID, 'トークルーム ' || c.Z_PK) as name,
-                        COUNT(m.Z_PK) as msg_count,
-                        MAX(m.ZCREATEDTIME) as last_time
-                    FROM ZCHAT c
-                    JOIN ZMESSAGE m ON m.ZCHAT = c.Z_PK
-                    GROUP BY c.Z_PK
-                    ORDER BY last_time DESC
-                `);
+                let res = null;
+                try {
+                    res = currentDb.exec(query1);
+                } catch (e1) {
+                    console.warn("ZCHATからの取しゅ得とく失しっ敗ぱい。フォールバックを実じっ行こうします", e1);
+                    res = currentDb.exec(query2);
+                }
 
                 if (!res.length || !res[0].values.length) {
-                    chatList.innerHTML = '<div style="padding:15px; color:#666;">トークデータが見みつかりません</div>';
+                    chatList.innerHTML = '<div style="padding:15px; color:#666;">有ゆう効こうなトークデータが見みつかりませんでした</div>';
                     return;
                 }
 
@@ -362,7 +324,7 @@
                     const item = document.createElement('div');
                     item.className = 'chat-item';
                     item.innerHTML = `
-                        <div class="chat-name">${escapeHtml(String(name))}</div>
+                        <div class="chat-name">${escapeHtml(name)}</div>
                         <div class="chat-meta">
                             <span>${count} 件けん</span>
                             <span>${formatTimestamp(lastTime)}</span>
@@ -376,57 +338,74 @@
                     chatList.appendChild(item);
                 });
 
-            } catch (e) {
-                console.error(e);
-                chatList.innerHTML = '<div style="padding:15px; color:red;">データベース読よみ込こみエラー</div>';
+            } catch (err) {
+                console.error("ロードエラー:", err);
+                chatList.innerHTML = `<div class="error-log">DB読よみ込こみエラー:\n${escapeHtml(err.message)}</div>`;
             }
         }
 
-        // 選せん択たく中ちゅうのトークルームのメッセージ履り歴れきを表ひょう示じ
+        // 安あん全ぜんなメッセージ取しゅ得とく
         function loadMessages(chatId, chatName) {
             const chatView = document.getElementById('chat-view');
-            chatView.innerHTML = `<div class="chat-header">${escapeHtml(String(chatName))} のトーク履り歴れき</div>`;
+            chatView.innerHTML = `<div class="chat-header">${escapeHtml(chatName)} のトーク履り歴れき</div>`;
+
+            // パターン1: 詳しょう細さい情じょう報ほう（差出さ人にん名めいやコンテントタイプ付つき）
+            let q1 = `
+                SELECT 
+                    m.ZTEXT,
+                    m.ZCREATEDTIME,
+                    m.ZISFROMME,
+                    COALESCE(u.ZCUSTOMNAME, u.ZNAME, '相あい手て') as sender_name
+                FROM ZMESSAGE m
+                LEFT JOIN ZUSER u ON m.ZSENDER = u.Z_PK
+                WHERE m.ZCHAT = ${chatId}
+                ORDER BY m.ZCREATEDTIME ASC
+            `;
+
+            // パターン2: 最さい軽けい量りょう（エラー回かい避ひ優ゆう先せん）
+            let q2 = `
+                SELECT 
+                    ZTEXT,
+                    ZCREATEDTIME,
+                    ZISFROMME,
+                    '相あい手て' as sender_name
+                FROM ZMESSAGE
+                ORDER BY ZCREATEDTIME ASC
+            `;
 
             try {
-                const query = `
-                    SELECT 
-                        m.ZTEXT,
-                        m.ZCREATEDTIME,
-                        m.ZISFROMME,
-                        m.ZCONTENTTYPE,
-                        COALESCE(u.ZCUSTOMNAME, u.ZNAME, '相あい手て') as sender_name
-                    FROM ZMESSAGE m
-                    LEFT JOIN ZUSER u ON m.ZSENDER = u.Z_PK
-                    WHERE m.ZCHAT = ${chatId}
-                    ORDER BY m.ZCREATEDTIME ASC
-                `;
+                let res = null;
+                try {
+                    res = currentDb.exec(q1);
+                } catch (e) {
+                    res = currentDb.exec(q2);
+                }
 
-                const res = currentDb.exec(query);
-                if (!res.length) {
+                if (!res.length || !res[0].values.length) {
                     chatView.innerHTML += '<div style="color:#888;">メッセージがありません</div>';
                     return;
                 }
 
                 res[0].values.forEach(row => {
-                    const [text, ts, isMe, contentType, senderName] = row;
+                    const [text, ts, isMe, senderName] = row;
+                    if (!text) return; // 空そらテキストはスキップ
+
                     const isMeBool = Boolean(isMe);
                     const senderLabel = isMeBool ? '自じ分ぶん' : senderName;
                     const timeStr = formatTimestamp(ts);
-                    const msgContent = getMessageText(text, contentType);
 
                     const msgRow = document.createElement('div');
                     msgRow.className = `msg-row ${isMeBool ? 'me' : 'other'}`;
                     msgRow.innerHTML = `
-                        <div class="msg-sender">${escapeHtml(String(senderLabel))}</div>
+                        <div class="msg-sender">${escapeHtml(senderLabel)}</div>
                         <div class="msg-meta">${timeStr}</div>
-                        <div class="bubble">${msgContent}</div>
+                        <div class="bubble">${escapeHtml(text)}</div>
                     `;
                     chatView.appendChild(msgRow);
                 });
 
-            } catch (e) {
-                console.error(e);
-                chatView.innerHTML += '<div style="color:red;">メッセージの読よみ込こみに失しっ敗ぱいしました</div>';
+            } catch (err) {
+                chatView.innerHTML += `<div class="error-log">メッセージ読よみ込こみエラー:\n${escapeHtml(err.message)}</div>`;
             }
         }
     </script>

@@ -440,25 +440,21 @@
                 const path = file.webkitRelativePath || file.name;
                 const sizeMB = (file.size / 1024 / 1024).toFixed(2);
 
-                // 1. WAL / SHM ログファイルの検知
                 if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) {
                     detectedRegistry.walShm.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
                 }
 
-                // 2. メディア・音声・添付ファイルの検知
                 if (/\.(jpg|jpeg|png|gif|webp|mp4|mov|m4a|aud|aac|mp3|pdf|docx|zip)$/i.test(name)) {
                     detectedRegistry.media.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
                 }
 
-                // 3. 設定ファイル・バックアップXML/plistの検知
                 if (/\.(plist|xml|json|pref)$/i.test(name) || name.includes('preference')) {
                     detectedRegistry.configs.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
                 }
 
-                // 4. SQLiteデータベースの判定と深層読み込み
                 try {
                     const arrayBuffer = await file.arrayBuffer();
                     const uInt8Array = new Uint8Array(arrayBuffer);
@@ -542,9 +538,12 @@
                 if (!res.length) return info;
                 info.allTables = res[0].values.map(r => r[0]);
 
-                info.msgTable = info.allTables.find(t => t === 'ZMESSAGE' || t === 'messages') || info.allTables.find(t => t.includes('MESSAGE'));
-                info.chatTable = info.allTables.find(t => t === 'ZCHAT' || t === 'chats') || info.allTables.find(t => t.includes('CHAT'));
-                info.userTable = info.allTables.find(t => t === 'ZUSER' || t === 'ZCONTACT' || t === 'users') || info.allTables.find(t => t.includes('USER') || t.includes('CONTACT'));
+                const findTable = (names) => info.allTables.find(t => names.some(n => t.toUpperCase() === n.toUpperCase())) ||
+                                            info.allTables.find(t => names.some(n => t.toUpperCase().includes(n.toUpperCase())));
+
+                info.msgTable = findTable(['ZMESSAGE', 'messages', 'chat_history', 'message']);
+                info.chatTable = findTable(['ZCHAT', 'chats', 'chat_rooms', 'chat']);
+                info.userTable = findTable(['ZUSER', 'ZCONTACT', 'users', 'contacts', 'friends']);
 
                 if (info.msgTable) {
                     const colsRes = db.exec(`PRAGMA table_info(${info.msgTable})`);
@@ -552,12 +551,24 @@
                         info.msgCols = colsRes[0].values.map(c => c[1]);
                         const cUpper = info.msgCols.map(c => c.toUpperCase());
                         
-                        info.textCol = info.msgCols[cUpper.indexOf('ZTEXT')] || info.msgCols[cUpper.indexOf('TEXT')] || info.msgCols.find(c => c.toUpperCase().includes('TEXT'));
-                        info.timeCol = info.msgCols[cUpper.indexOf('ZCREATEDTIME')] || info.msgCols[cUpper.indexOf('CREATED_TIME')] || info.msgCols.find(c => c.toUpperCase().includes('TIME') || c.toUpperCase().includes('DATE'));
-                        info.isMeCol = info.msgCols[cUpper.indexOf('ZISFROMME')] || info.msgCols[cUpper.indexOf('ZIS_FROM_ME')] || info.msgCols.find(c => c.toUpperCase().includes('FROMME') || c.toUpperCase().includes('ISME'));
-                        info.chatCol = info.msgCols[cUpper.indexOf('ZCHAT')] || info.msgCols[cUpper.indexOf('CHAT_ID')] || info.msgCols.find(c => c.toUpperCase().includes('CHAT'));
-                        info.senderCol = info.msgCols[cUpper.indexOf('ZSENDER')] || info.msgCols[cUpper.indexOf('SENDER_ID')] || info.msgCols.find(c => c.toUpperCase().includes('SENDER'));
-                        info.typeCol = info.msgCols[cUpper.indexOf('ZCONTENTTYPE')] || info.msgCols[cUpper.indexOf('ZTYPE')] || info.msgCols.find(c => c.toUpperCase().includes('TYPE'));
+                        const findCol = (candidates) => {
+                            for (let cand of candidates) {
+                                let idx = cUpper.indexOf(cand.toUpperCase());
+                                if (idx !== -1) return info.msgCols[idx];
+                            }
+                            for (let cand of candidates) {
+                                let col = info.msgCols.find(c => c.toUpperCase().includes(cand.toUpperCase()));
+                                if (col) return col;
+                            }
+                            return null;
+                        };
+
+                        info.textCol = findCol(['ZTEXT', 'TEXT', 'ZCONTENT', 'CONTENT', 'BODY', 'MESSAGE']);
+                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'CREATED_AT', 'TIME', 'DATE']);
+                        info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'ZFROMME']);
+                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'CHATID', 'ROOM_ID', 'MID']);
+                        info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID', 'ZSENDERID', 'SENDER', 'ZFROM', 'FROM_MID']);
+                        info.typeCol = findCol(['ZCONTENTTYPE', 'ZTYPE', 'CONTENT_TYPE', 'TYPE', 'ZMSGTYPE', 'MSG_TYPE']);
                     }
                 }
 
@@ -565,8 +576,16 @@
                     const cColsRes = db.exec(`PRAGMA table_info(${info.chatTable})`);
                     if (cColsRes.length) {
                         const cCols = cColsRes[0].values.map(c => c[1]);
-                        info.chatNameCol = cCols.find(c => c.toUpperCase() === 'ZNAME' || c.toUpperCase() === 'NAME');
-                        info.chatMidCol = cCols.find(c => c.toUpperCase() === 'ZMID' || c.toUpperCase() === 'MID');
+                        const cUpper = cCols.map(c => c.toUpperCase());
+                        const findChatCol = (candidates) => {
+                            for (let cand of candidates) {
+                                let idx = cUpper.indexOf(cand.toUpperCase());
+                                if (idx !== -1) return cCols[idx];
+                            }
+                            return cCols.find(c => candidates.some(cand => c.toUpperCase().includes(cand.toUpperCase())));
+                        };
+                        info.chatNameCol = findChatCol(['ZNAME', 'NAME', 'TITLE']);
+                        info.chatMidCol = findChatCol(['ZMID', 'MID', 'ZCHATID', 'CHAT_ID']);
                     }
                 }
 
@@ -574,8 +593,16 @@
                     const uColsRes = db.exec(`PRAGMA table_info(${info.userTable})`);
                     if (uColsRes.length) {
                         info.userCols = uColsRes[0].values.map(c => c[1]);
-                        info.userPkCol = info.userCols.find(c => c.toUpperCase() === 'Z_PK' || c.toUpperCase() === 'ROWID') || 'Z_PK';
-                        info.userMidCol = info.userCols.find(c => c.toUpperCase() === 'ZMID' || c.toUpperCase() === 'MID');
+                        const uUpper = info.userCols.map(c => c.toUpperCase());
+                        const findUserCol = (candidates) => {
+                            for (let cand of candidates) {
+                                let idx = uUpper.indexOf(cand.toUpperCase());
+                                if (idx !== -1) return info.userCols[idx];
+                            }
+                            return info.userCols.find(c => candidates.some(cand => c.toUpperCase().includes(cand.toUpperCase())));
+                        };
+                        info.userPkCol = findUserCol(['Z_PK', 'ROWID', '_ID', 'ID']);
+                        info.userMidCol = findUserCol(['ZMID', 'MID', 'ZUSERID', 'USER_ID']);
                     }
                 }
             } catch (e) {
@@ -596,11 +623,28 @@
         }
 
         function formatTimestamp(ts) {
-            if (!ts) return '日時不明';
+            if (!ts || isNaN(ts)) return '日時不明';
+            let numTs = Number(ts);
+            if (numTs <= 0) return '日時不明';
+
             let date;
-            if (ts > 1000000000000) date = new Date(ts);
-            else if (ts > 1000000000) date = new Date(ts * 1000);
-            else date = new Date(new Date('2001-01-01T00:00:00Z').getTime() + ts * 1000);
+            if (numTs > 1000000000000) {
+                date = new Date(numTs);
+            } else if (numTs > 1000000000) {
+                date = new Date(numTs * 1000);
+            } else if (numTs > 100000000) {
+                if (numTs > 946684800) {
+                    date = new Date(numTs * 1000);
+                } else {
+                    const cocoaEpochMs = 978307200000;
+                    date = new Date(cocoaEpochMs + numTs * 1000);
+                }
+            } else {
+                const cocoaEpochMs = 978307200000;
+                date = new Date(cocoaEpochMs + numTs * 1000);
+            }
+
+            if (isNaN(date.getTime())) return '日時不明';
 
             const yyyy = date.getFullYear();
             const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -624,6 +668,9 @@
 
             try {
                 let res = [];
+                const chatCol = info.chatCol || 'ZCHAT';
+                const timeCol = info.timeCol || 'ROWID';
+
                 if (info.chatTable) {
                     let nameExpr = "c.ZNAME";
                     let joinUserSql = "";
@@ -635,17 +682,15 @@
                             return info.userCols.some(c => c.toUpperCase() === colName);
                         });
                         if (existingCols.length > 0) {
-                            nameExpr = `COALESCE(c.ZNAME, ${existingCols.join(', ')}, 'トーク相手 (ID: ' || c.Z_PK || ')')`;
+                            const userColsSql = existingCols.map(c => `NULLIF(${c}, '')`).join(', ');
+                            nameExpr = `COALESCE(NULLIF(c.ZNAME, ''), ${userColsSql}, 'トーク相手 (ID: ' || c.Z_PK || ')')`;
                         } else {
-                            nameExpr = `COALESCE(c.ZNAME, 'トーク相手 (ID: ' || c.Z_PK || ')')`;
+                            nameExpr = `COALESCE(NULLIF(c.ZNAME, ''), 'トーク相手 (ID: ' || c.Z_PK || ')')`;
                         }
                         joinUserSql = `LEFT JOIN ${info.userTable} u ON c.${info.chatMidCol} = u.${info.userMidCol}`;
                     } else {
-                        nameExpr = `COALESCE(c.ZNAME, 'トーク相手 (ID: ' || c.Z_PK || ')')`;
+                        nameExpr = `COALESCE(NULLIF(c.ZNAME, ''), 'トーク相手 (ID: ' || c.Z_PK || ')')`;
                     }
-
-                    const chatCol = info.chatCol || 'ZCHAT';
-                    const timeCol = info.timeCol || 'ROWID';
 
                     const joinQuery = `
                         SELECT 
@@ -658,33 +703,53 @@
                         ${joinUserSql}
                         LEFT JOIN ${info.msgTable} m ON m.${chatCol} = c.Z_PK
                         GROUP BY c.Z_PK
+                        HAVING msg_count > 0
                         ORDER BY last_time DESC
                     `;
-                    try { res = db.exec(joinQuery); } catch(e) { console.warn("トークリストクエリ実行エラー:", e); }
+                    try { res = db.exec(joinQuery); } catch(e) { console.warn("トークリスト統合クエリ失敗、フォールバック試行:", e); }
+                }
+
+                if ((!res.length || !res[0].values.length) && info.chatTable) {
+                    try {
+                        const simpleChatQuery = `
+                            SELECT 
+                                c.Z_PK,
+                                COALESCE(NULLIF(c.ZNAME, ''), 'トーク相手 (ID: ' || c.Z_PK || ')') as name,
+                                ${info.chatMidCol ? `c.${info.chatMidCol}` : "''"} as chat_mid,
+                                COUNT(m.ROWID) as msg_count,
+                                MAX(m.${timeCol}) as last_time
+                            FROM ${info.chatTable} c
+                            LEFT JOIN ${info.msgTable} m ON m.${chatCol} = c.Z_PK
+                            GROUP BY c.Z_PK
+                            ORDER BY last_time DESC
+                        `;
+                        res = db.exec(simpleChatQuery);
+                    } catch(e) { console.warn("簡易トークリストクエリ失敗:", e); }
                 }
 
                 if (!res.length || !res[0].values.length) {
-                    let groupCol = info.chatCol ? `m.${info.chatCol}` : '1';
-                    const fallbackQuery = `
-                        SELECT 
-                            ${groupCol} as Z_PK,
-                            'トーク相手 (ID: ' || ${groupCol} || ')' as name,
-                            '' as chat_mid,
-                            COUNT(m.ROWID) as msg_count,
-                            MAX(m.${info.timeCol || 'ROWID'}) as last_time
-                        FROM ${info.msgTable} m
-                        GROUP BY ${groupCol}
-                        ORDER BY last_time DESC
-                    `;
-                    res = db.exec(fallbackQuery);
+                    try {
+                        let groupCol = info.chatCol ? `m.${info.chatCol}` : '1';
+                        const fallbackQuery = `
+                            SELECT 
+                                ${groupCol} as Z_PK,
+                                'トーク相手 (ID: ' || ${groupCol} || ')' as name,
+                                '' as chat_mid,
+                                COUNT(m.ROWID) as msg_count,
+                                MAX(m.${info.timeCol || 'ROWID'}) as last_time
+                            FROM ${info.msgTable} m
+                            GROUP BY ${groupCol}
+                            ORDER BY last_time DESC
+                        `;
+                        res = db.exec(fallbackQuery);
+                    } catch(e) { console.error("フォールバックメッセージグループ化失敗:", e); }
                 }
 
                 if (!res.length || !res[0].values.length) {
-                    chatList.innerHTML = '<div style="padding:15px; color:#999; font-size:12px;">メッセージデータが見つかりません</div>';
+                    chatList.innerHTML = '<div style="padding:15px; color:#999; font-size:12px;">メッセージデータが見つかりませんでした</div>';
                     return;
                 }
 
-                // 全トーク一括抽出ボタン
                 const allItem = document.createElement('div');
                 allItem.className = 'chat-item all-chats-item';
                 allItem.innerHTML = `
@@ -727,7 +792,7 @@
 
             } catch (err) {
                 console.error(err);
-                chatList.innerHTML = '<div style="padding:15px; color:red;">トークリスト取得中にエラーが発生しました</div>';
+                chatList.innerHTML = `<div style="padding:15px; color:red;">トークリスト取得エラー: ${escapeHtml(err.message)}</div>`;
             }
         }
 
@@ -786,11 +851,13 @@
                 });
 
                 if (existingCols.length > 0) {
-                    selectSenderSql = `COALESCE(${existingCols.join(', ')}) as JOINED_SENDER_NAME`;
+                    const userColsSql = existingCols.map(c => `NULLIF(${c}, '')`).join(', ');
+                    selectSenderSql = `COALESCE(${userColsSql}) as JOINED_SENDER_NAME`;
                 }
 
-                if (info.userPkCol) {
-                    joinSql = `LEFT JOIN ${info.userTable} u ON m.${info.senderCol} = u.${info.userPkCol}`;
+                const joinTargetCol = info.userMidCol || info.userPkCol;
+                if (joinTargetCol) {
+                    joinSql = `LEFT JOIN ${info.userTable} u ON m.${info.senderCol} = u.${joinTargetCol}`;
                 }
             }
 
@@ -807,9 +874,20 @@
             try {
                 res = db.exec(fullQuery);
             } catch (e) {
-                console.error("深層抽出エラー:", e);
-                chatView.innerHTML += `<div style="color:white; background:red; padding:10px; border-radius:5px; margin-top:20px;">抽出エラー: ${escapeHtml(e.message)}</div>`;
-                return;
+                console.warn("ユーザーJOIN付きメッセージ抽出エラー、単体クエリ試行:", e);
+                try {
+                    const simpleMsgQuery = `
+                        SELECT m.*, '' as JOINED_SENDER_NAME
+                        FROM ${info.msgTable} m
+                        ${whereClause}
+                        ${timeOrder}
+                    `;
+                    res = db.exec(simpleMsgQuery);
+                } catch (e2) {
+                    console.error("メッセージ抽出エラー:", e2);
+                    chatView.innerHTML += `<div style="color:white; background:red; padding:10px; border-radius:5px; margin-top:20px;">抽出エラー: ${escapeHtml(e2.message)}</div>`;
+                    return;
+                }
             }
 
             if (!res.length || !res[0].values.length) {
@@ -844,7 +922,7 @@
                 if (!isMeBool) {
                     if (senderName && String(senderName).trim() !== '') {
                         displayName = senderName;
-                    } else if (chatName && !chatName.startsWith('トーク相手 (ID:') && !isAllMode) {
+                    } else if (chatName && !chatName.startsWith('トーク相手 (ID:') && !chatName.startsWith('すべてのトーク履歴')) {
                         displayName = chatName;
                     } else if (senderId) {
                         displayName = `相手 (ID:${senderId})`;

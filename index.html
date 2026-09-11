@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク・深層解析＆横断検索ツール</title>
+    <title>LINE トーク解析 Pro (スタンドアロン版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -15,956 +15,403 @@
         }
         header {
             background-color: #00c300; color: white; padding: 12px 20px;
-            display: flex; justify-content: space-between; align-items: center;
+            display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         header h1 { font-size: 18px; margin: 0; }
         .btn {
             border: none; padding: 8px 16px; font-weight: bold; border-radius: 20px;
-            cursor: pointer; font-size: 13px;
+            cursor: pointer; font-size: 13px; transition: opacity 0.2s;
         }
+        .btn:hover { opacity: 0.9; }
         .btn-print { background-color: white; color: #00c300; display: none; }
-        .btn-reset { background-color: rgba(255,255,255,0.2); color: white; display: none; }
+        .btn-reset { background-color: rgba(255,255,255,0.2); color: white; display: none; margin-right: 8px; }
 
         #drop-zone {
-            margin: 30px auto; width: 90%; max-width: 800px; padding: 40px 20px;
+            margin: 40px auto; width: 90%; max-width: 700px; padding: 50px 20px;
             border: 2px dashed #00c300; border-radius: 12px; background: white; text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }
-        .file-select-btns { margin-top: 15px; display: flex; justify-content: center; gap: 10px; }
+        .file-select-btns { margin-top: 20px; display: flex; justify-content: center; gap: 12px; }
         .file-btn { background: #00c300; color: white; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; }
         .file-btn:hover { background: #009900; }
         #drop-zone input { display: none; }
 
-        #status-msg {
-            margin: 10px auto; width: 90%; max-width: 800px; font-size: 14px;
-            color: #333; text-align: center; line-height: 1.6;
-        }
+        #status-msg { margin: 10px auto; width: 90%; max-width: 700px; font-size: 14px; color: #555; text-align: center; }
 
         #app-container { display: none; flex: 1; overflow: hidden; }
-        #sidebar {
-            width: 380px; background: white; border-right: 1px solid #ddd;
-            display: flex; flex-direction: column;
-        }
+        #sidebar { width: 340px; background: white; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; }
 
-        .section-box { padding: 10px 14px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0; }
-        .section-box label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; font-weight: bold; }
-        #account-select { width: 100%; padding: 6px; border-radius: 6px; border: 1px solid #ccc; font-size: 12px; }
+        .search-box-container { padding: 12px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0; }
+        .search-input { width: 100%; padding: 8px 14px; border: 1px solid #ccc; border-radius: 20px; font-size: 13px; outline: none; }
+        .search-input:focus { border-color: #00c300; }
 
-        .search-box-container { padding: 10px 14px; background: #eef2f5; border-bottom: 1px solid #e0e0e0; }
-        .search-input { width: 100%; padding: 8px 12px; border: 1px solid #00c300; border-radius: 20px; font-size: 13px; outline: none; }
-
-        #file-summary { padding: 8px 14px; background: #f8f9fa; font-size: 11px; color: #333; border-bottom: 1px solid #ddd; }
-        .file-badge { display: inline-block; padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; }
-        .badge-db { background: #007bff; }
-        .badge-wal { background: #e67e22; }
+        #file-info-badge { padding: 6px 12px; background: #eef9ee; font-size: 11px; color: #2b8a3e; border-bottom: 1px solid #e0e0e0; font-weight: bold; }
 
         #chat-list { flex: 1; overflow-y: auto; }
         .chat-item { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; display: flex; align-items: center; gap: 12px; }
         .chat-item:hover { background-color: #f8f9fa; }
-        .chat-item.active { background-color: #e6f9e6; font-weight: bold; }
+        .chat-item.active { background-color: #e6f9e6; }
         .chat-avatar { width: 40px; height: 40px; border-radius: 50%; background: #00c300; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; }
-        .chat-info-body { flex: 1; min-width: 0; }
-        .chat-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .chat-meta { font-size: 11px; color: #777; display: flex; justify-content: space-between; margin-top: 3px; }
+        .chat-info { flex: 1; min-width: 0; }
+        .chat-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1c1e21; }
+        .chat-count { font-size: 11px; color: #777; margin-top: 2px; }
 
         #chat-view { flex: 1; background: #8cabd9; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
-        .chat-header-info { background: white; padding: 16px; border-radius: 8px; border-left: 5px solid #00c300; margin-bottom: 20px; flex-shrink: 0; }
-        
+        .chat-header { background: white; padding: 14px 18px; border-radius: 8px; margin-bottom: 16px; flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .chat-header h2 { margin: 0 0 4px 0; font-size: 16px; color: #1c1e21; }
+        .chat-header div { font-size: 12px; color: #666; }
+
         .load-more-btn {
-            align-self: center; margin-bottom: 15px; background: rgba(255,255,255,0.8);
-            border: none; padding: 8px 16px; border-radius: 15px; cursor: pointer;
-            font-size: 12px; font-weight: bold; color: #333;
+            align-self: center; margin-bottom: 15px; background: rgba(255,255,255,0.9);
+            border: none; padding: 8px 18px; border-radius: 20px; cursor: pointer;
+            font-size: 12px; font-weight: bold; color: #333; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .load-more-btn:hover { background: white; }
 
-        .msg-row { display: flex; flex-direction: column; margin-bottom: 16px; }
+        .msg-row { display: flex; flex-direction: column; margin-bottom: 12px; }
         .msg-row.me { align-items: flex-end; }
         .msg-row.other { align-items: flex-start; }
-        .msg-header-line { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-        .msg-sender-badge { font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 10px; color: white; }
-        .msg-row.me .msg-sender-badge { background: #2b8a3e; }
-        .msg-row.other .msg-sender-badge { background: #1864ab; }
-        .msg-timestamp { font-size: 11px; color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
-        .bubble-container { max-width: 88%; display: flex; flex-direction: column; }
-        .me .bubble-container { align-items: flex-end; }
-        .other .bubble-container { align-items: flex-start; }
-        .bubble { padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; background: white; }
+        .msg-meta { font-size: 11px; color: rgba(255,255,255,0.9); text-shadow: 0 1px 2px rgba(0,0,0,0.3); margin-bottom: 3px; display: flex; gap: 6px; }
+        .msg-sender { font-weight: bold; }
+        .bubble { max-width: 80%; padding: 9px 13px; border-radius: 14px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; background: white; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .me .bubble { background-color: #85e249; border-top-right-radius: 2px; }
         .other .bubble { background-color: #ffffff; border-top-left-radius: 2px; }
 
-        .wal-warning { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 8px 12px; font-size: 11px; border-radius: 4px; margin-top: 5px; }
-        .error-log { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 12px; border-radius: 6px; margin-top: 10px; text-align: left; font-size: 12px; font-family: monospace; white-space: pre-wrap; }
-
         @media print {
-            header, #sidebar, .file-select-btns, .wal-warning, .load-more-btn { display: none !important; }
-            #app-container { display: block !important; height: auto !important; }
-            #chat-view { background: white !important; color: black !important; padding: 0 !important; overflow: visible !important; }
-            .bubble { border: 1px solid #ccc !important; }
-            .msg-timestamp { color: #666 !important; text-shadow: none !important; }
+            header, #sidebar, .load-more-btn { display: none !important; }
+            #app-container { display: block !important; }
+            #chat-view { background: white !important; padding: 0 !important; }
+            .bubble { border: 1px solid #ccc !important; box-shadow: none !important; }
+            .msg-meta { color: #555 !important; text-shadow: none !important; }
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>LINE トーク・深層解析＆全ファイル横断検索ツール</h1>
-        <div class="header-actions">
-            <button id="btn-reset" class="btn btn-reset" onclick="location.reload()">↺ 最初からやり直す</button>
-            <button id="btn-print" class="btn btn-print" onclick="window.print()">🖨 印刷 (PDF保存)</button>
+        <h1>LINE トーク解析 Pro</h1>
+        <div>
+            <button id="btn-reset" class="btn btn-reset" onclick="location.reload()">最初から</button>
+            <button id="btn-print" class="btn btn-print" onclick="window.print()">印刷 (PDF保存)</button>
         </div>
     </header>
 
     <div id="drop-zone">
-        <h3>📁 ここに LINE の DB ファイルまたはフォルダをドロップ</h3>
+        <h3>📂 ここに DB ファイルをドロップ</h3>
         <p style="color: #666; font-size: 13px;">
-            <code>Line.sqlite</code> や <code>Talk.sqlite</code>、<code>P_Line.sqlite</code> に対応します
+            <code>Line.sqlite</code> や <code>Talk.sqlite</code>、フォルダごとドロップできます
         </p>
         <div class="file-select-btns">
             <label class="file-btn">
-                📄 ファイルを選択 (.sqlite)
-                <input type="file" id="file-input-single" accept=".sqlite">
+                📄 ファイルを選択
+                <input type="file" id="file-single" accept=".sqlite,.sqlite-wal">
             </label>
             <label class="file-btn">
                 📁 フォルダを選択
-                <input type="file" id="file-input-dir" webkitdirectory directory multiple>
+                <input type="file" id="file-dir" webkitdirectory directory multiple>
             </label>
         </div>
     </div>
-    <div id="status-msg">ライブラリ初期化中...</div>
+    <div id="status-msg">SQL.js ライブラリ準備中...</div>
 
     <div id="app-container">
         <div id="sidebar">
-            <div class="section-box">
-                <label for="account-select">🗄 対象データベース切り替え:</label>
-                <select id="account-select" onchange="switchAccount(this.value)"></select>
-            </div>
             <div class="search-box-container">
-                <input type="text" id="global-search-input" class="search-input" placeholder="🔍 名前・IDを検索..." oninput="handleSearchInput(this.value)">
+                <input type="text" id="search-input" class="search-input" placeholder="🔍 名前・IDで検索..." oninput="filterList(this.value)">
             </div>
-            <div id="file-summary"></div>
+            <div id="file-info-badge">解析完了</div>
             <div id="chat-list"></div>
         </div>
         <div id="chat-view">
-            <div style="text-align: center; color: #ffffff; margin-top: 50px;">
-                左側のリストからトークルームを選択してください
+            <div style="text-align: center; color: white; margin-top: 60px;">
+                左のリストからトークルームを選択してください
             </div>
         </div>
     </div>
 
     <script>
-        let accounts = [];
-        let currentAccount = 'all';
-        let allDiscoveredChats = [];
-        let currentSearchQuery = '';
-        let debugLogs = [];
-
-        let globalUserMap = {};
-        let globalChatMap = {};
-
-        let detectedRegistry = { databases: [], walShm: [] };
         let SQL = null;
+        let db = null;
+        let chatList = [];
+        let userMap = {};
+        let chatMap = {};
+        let msgTable = null;
+        let colInfo = {};
 
-        const RENDER_LIMIT = 1000; // 初期表示メッセージ上限
-
-        const CONTENT_TYPE_MAP = {
-            0: '💬 テキスト', 1: '🖼 [画像]', 2: '🎥 [動画]', 3: '🎙 [音声]',
-            6: '📞 [通話]', 7: '📍 [位置情報]', 11: '🎨 [スタンプ]', 12: '🎴 [連絡先]', 13: '📓 [ノート]',
-            14: '📞 [通話履歴]', 15: '📎 [ファイル]', 16: '🔗 [リンク]', 18: '✨ [アニメスタンプ]'
-        };
+        const RENDER_LIMIT = 500;
 
         initSqlJs({
             locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
-        }).then(sqlEngine => {
-            SQL = sqlEngine;
-            document.getElementById('status-msg').innerText = '準備完了: ファイルまたはフォルダを選択・ドロップしてください';
-        }).catch(err => {
-            document.getElementById('status-msg').innerHTML = `<span style="color:red;">初期化エラー: ${err.message}</span>`;
+        }).then(sql => {
+            SQL = sql;
+            document.getElementById('status-msg').innerText = '準備完了: ファイルをドロップしてください';
         });
 
         const dropZone = document.getElementById('drop-zone');
-        const fileSingle = document.getElementById('file-input-single');
-        const fileDir = document.getElementById('file-input-dir');
-
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); });
-        dropZone.addEventListener('drop', async (e) => {
+        dropZone.addEventListener('dragover', e => e.preventDefault());
+        dropZone.addEventListener('drop', async e => {
             e.preventDefault();
-            const items = e.dataTransfer.items;
-            let filesToProcess = [];
-            document.getElementById('status-msg').innerText = 'ファイルを走査中...';
-
-            if (items && items.length > 0) {
-                let entryPromises = [];
-                for (let i = 0; i < items.length; i++) {
-                    const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
-                    if (entry) entryPromises.push(traverseFileTree(entry));
-                    else {
-                        const file = items[i].getAsFile();
-                        if (file) filesToProcess.push(file);
-                    }
+            let files = [];
+            if (e.dataTransfer.items) {
+                for (let item of e.dataTransfer.items) {
+                    if (item.kind === 'file') files.push(item.getAsFile());
                 }
-                const nestedFiles = await Promise.all(entryPromises);
-                nestedFiles.forEach(arr => filesToProcess.push(...arr));
-            } else if (e.dataTransfer.files.length > 0) {
-                filesToProcess = Array.from(e.dataTransfer.files);
-            }
-
-            if (filesToProcess.length > 0) await handleFiles(filesToProcess);
-        });
-
-        fileSingle.addEventListener('change', async (e) => {
-            if (e.target.files.length > 0) await handleFiles(Array.from(e.target.files));
-        });
-        fileDir.addEventListener('change', async (e) => {
-            if (e.target.files.length > 0) await handleFiles(Array.from(e.target.files));
-        });
-
-        async function traverseFileTree(topEntry) {
-            const files = [];
-            const queue = [topEntry];
-            while (queue.length > 0) {
-                const entry = queue.shift();
-                if (entry.isFile) {
-                    await new Promise((resolve) => {
-                        entry.file(f => { files.push(f); resolve(); }, () => resolve());
-                    });
-                } else if (entry.isDirectory) {
-                    const dirReader = entry.createReader();
-                    let batch = [];
-                    do {
-                        batch = await new Promise(res => dirReader.readEntries(e => res(e), () => res([])));
-                        for (let child of batch) queue.push(child);
-                    } while (batch.length > 0);
-                }
-            }
-            return files;
-        }
-
-        async function isSqliteHeader(file) {
-            if (file.size < 100) return false;
-            try {
-                const blobSlice = file.slice(0, 16);
-                const arrayBuffer = await blobSlice.arrayBuffer();
-                const uInt8Array = new Uint8Array(arrayBuffer);
-                const headerStr = String.fromCharCode.apply(null, uInt8Array);
-                return headerStr.startsWith('SQLite format 3');
-            } catch (e) { return false; }
-        }
-
-        async function handleFiles(fileList) {
-            if (!SQL) return;
-            const statusEl = document.getElementById('status-msg');
-            detectedRegistry = { databases: [], walShm: [] };
-            accounts = [];
-            allDiscoveredChats = [];
-            debugLogs = [];
-
-            const totalFiles = fileList.length;
-
-            for (let i = 0; i < totalFiles; i++) {
-                const file = fileList[i];
-                const name = file.name.toLowerCase();
-                const path = file.webkitRelativePath || file.name;
-                const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-
-                if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) {
-                    detectedRegistry.walShm.push({ name: file.name, path, size: `${sizeMB} MB` });
-                    continue;
-                }
-
-                if (await isSqliteHeader(file)) {
-                    try {
-                        statusEl.innerText = `データベース解析中: ${file.name} (${sizeMB} MB)...`;
-                        await new Promise(r => setTimeout(r, 0));
-                        const arrayBuffer = await file.arrayBuffer();
-                        const dbInstance = new SQL.Database(new Uint8Array(arrayBuffer));
-                        const dbInfo = analyzeDatabase(dbInstance);
-
-                        const isValid = !!(dbInfo.msgTable || dbInfo.userTable || dbInfo.chatTable);
-                        detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: isValid });
-
-                        if (isValid) {
-                            const accIndex = accounts.length;
-                            accounts.push({
-                                id: accIndex,
-                                fileName: file.name,
-                                filePath: path,
-                                fileSize: `${sizeMB} MB`,
-                                db: dbInstance,
-                                info: dbInfo,
-                                pkToMidMap: {},
-                                midToPkMap: {}
-                            });
-                        } else {
-                            dbInstance.close();
-                            debugLogs.push(`ファイル "${file.name}" はSQLiteですが、LINE関連テーブルが見つかりませんでした。`);
-                        }
-                    } catch (e) {
-                        debugLogs.push(`ファイル "${file.name}" の解析失敗: ${e.message}`);
-                    }
-                }
-            }
-
-            if (accounts.length === 0) {
-                let logHtml = debugLogs.length > 0 ? `<div class="error-log"><strong>【詳細ログ】</strong><br>${escapeHtml(debugLogs.join('\n'))}</div>` : '';
-                statusEl.innerHTML = `
-                    <span style="color:red; font-weight:bold; font-size:15px;">有効な LINE データベースが見つかりませんでした。</span>
-                    <p style="font-size:12px; color:#555; margin-top:8px;">
-                        ※ 選択したファイルが Line.sqlite や Talk.sqlite であるか確認してください。
-                    </p>
-                    ${logHtml}`;
-                return;
-            }
-
-            buildGlobalDictionaries();
-            extractChatsFromAllAccounts();
-
-            dropZone.style.display = 'none';
-            statusEl.style.display = 'none';
-            document.getElementById('app-container').style.display = 'flex';
-            document.getElementById('btn-print').style.display = 'block';
-            document.getElementById('btn-reset').style.display = 'block';
-
-            renderRegistrySummary();
-
-            const selectEl = document.getElementById('account-select');
-            selectEl.innerHTML = accounts.length > 1 ? '<option value="all">全ファイルを統合して表示</option>' : '';
-            accounts.forEach((acc, index) => {
-                const option = document.createElement('option');
-                option.value = index;
-                option.textContent = `${acc.fileName} (${acc.fileSize})`;
-                selectEl.appendChild(option);
-            });
-
-            currentAccount = (accounts.length > 1) ? 'all' : 0;
-            selectEl.value = currentAccount;
-
-            renderChatList();
-        }
-
-        function renderRegistrySummary() {
-            const summaryEl = document.getElementById('file-summary');
-            let walWarn = detectedRegistry.walShm.length > 0 
-                ? `<div class="wal-warning">⚠️ WAL差分データ (${detectedRegistry.walShm.length}件) が検出されました。最新トークが表示されない場合は事前のDB結合が必要です。</div>` 
-                : '';
-
-            summaryEl.innerHTML = `
-                <div style="font-weight:bold; margin-bottom:4px; color:#111;">🔍 検知されたファイル:</div>
-                <div><span class="file-badge badge-db">DB</span> ${detectedRegistry.databases.filter(d=>d.isValidLineDb).length}件 | <span class="file-badge badge-wal">WAL</span> ${detectedRegistry.walShm.length}件</div>
-                ${walWarn}
-            `;
-        }
-
-        function analyzeDatabase(db) {
-            let info = { 
-                allTables: [],
-                msgTable: null, msgCols: [], textCols: [], timeCol: null, isMeCol: null, chatCol: null, senderCol: null, typeCol: null,
-                chatTable: null, userTable: null
-            };
-
-            try {
-                const res = db.exec("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')");
-                if (!res.length) return info;
-                info.allTables = res[0].values.map(r => r[0]);
-
-                const findTable = (candidates) => {
-                    for (let cand of candidates) {
-                        let match = info.allTables.find(t => t.toUpperCase() === cand.toUpperCase());
-                        if (match) return match;
-                    }
-                    for (let cand of candidates) {
-                        let match = info.allTables.find(t => t.toUpperCase().includes(cand.toUpperCase()));
-                        if (match) return match;
-                    }
-                    return null;
-                };
-
-                info.msgTable = findTable(['ZMESSAGE', 'Z_MESSAGE', 'CHAT_HISTORY', 'MESSAGES', 'MESSAGE', 'TALK_HISTORY']);
-                info.chatTable = findTable(['ZCHAT', 'Z_CHAT', 'CHATS', 'CHAT_ROOMS', 'ROOMS', 'CHAT']);
-                info.userTable = findTable(['ZUSER', 'Z_USER', 'ZCONTACT', 'Z_CONTACT', 'USERS', 'CONTACTS', 'FRIENDS', 'ZPROFILE', 'PROFILE']);
-
-                if (info.msgTable) {
-                    const colsRes = db.exec(`PRAGMA table_info("${info.msgTable}")`);
-                    if (colsRes.length) {
-                        info.msgCols = colsRes[0].values.map(c => c[1]);
-                        const cUpper = info.msgCols.map(c => c.toUpperCase());
-
-                        const findCol = (candidates) => {
-                            for (let cand of candidates) {
-                                let idx = cUpper.indexOf(cand.toUpperCase());
-                                if (idx !== -1) return info.msgCols[idx];
-                            }
-                            for (let cand of candidates) {
-                                let match = info.msgCols.find(c => c.toUpperCase().includes(cand.toUpperCase()));
-                                if (match) return match;
-                            }
-                            return null;
-                        };
-
-                        info.textCols = info.msgCols.filter(c => /TEXT|CONTENT|BODY|MESSAGE/i.test(c));
-                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE', 'ZDATE', 'CREATEDTIME']);
-                        info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'IS_OUT', 'FROM_ME']);
-                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'ROOM_ID', 'CHAT', 'ZADDRESSBOOKID']);
-                        info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID', 'FROM_MID', 'SENDER']);
-                        info.typeCol = findCol(['ZCONTENTTYPE', 'ZTYPE', 'CONTENT_TYPE', 'TYPE', 'CTYPE']);
-                    }
-                }
-            } catch (e) { console.error("DB構造解析エラー:", e); }
-            return info;
-        }
-
-        function buildGlobalDictionaries() {
-            globalUserMap = {};
-            globalChatMap = {};
-
-            accounts.forEach(acc => {
-                const { db, info } = acc;
-                const userTables = info.allTables.filter(t => 
-                    /^(ZUSER|Z_USER|ZCONTACT|Z_CONTACT|USERS|CONTACTS|FRIENDS|ZPROFILE|PROFILE)$/i.test(t) ||
-                    /USER|CONTACT|FRIEND/i.test(t)
-                );
-
-                userTables.forEach(tableName => {
-                    try {
-                        const colsRes = db.exec(`PRAGMA table_info("${tableName}")`);
-                        if (!colsRes.length) return;
-                        const cols = colsRes[0].values.map(c => c[1]);
-                        const cUpper = cols.map(c => c.toUpperCase());
-
-                        const res = db.exec(`SELECT * FROM "${tableName}"`);
-                        if (!res.length || !res[0].values) return;
-
-                        const nameCols = ['ZCUSTOMNAME', 'ZNAME', 'ZDISPLAYNAME', 'ZNICKNAME', 'CUSTOM_NAME', 'NAME', 'DISPLAY_NAME', 'SERVER_NAME'];
-                        const idCols = ['ZMID', 'Z_PK', 'ROWID', 'MID', 'ZUSERID', 'M_ID', 'ID', 'USER_ID'];
-
-                        res[0].values.forEach(row => {
-                            let name = '';
-                            for (let nc of nameCols) {
-                                let idx = cUpper.indexOf(nc);
-                                if (idx !== -1 && row[idx] && String(row[idx]).trim() !== '') {
-                                    name = String(row[idx]).trim();
-                                    break;
-                                }
-                            }
-                            if (!name) return;
-
-                            idCols.forEach(ic => {
-                                let idx = cUpper.indexOf(ic);
-                                if (idx !== -1 && row[idx] !== null && row[idx] !== undefined) {
-                                    const val = String(row[idx]).trim();
-                                    if (val) globalUserMap[val] = name;
-                                }
-                            });
-                        });
-                    } catch (e) {}
-                });
-            });
-
-            accounts.forEach(acc => {
-                const { db, info } = acc;
-                const chatTables = info.allTables.filter(t => 
-                    /^(ZCHAT|Z_CHAT|CHATS|CHAT_ROOMS|ROOMS|CHAT)$/i.test(t) ||
-                    /CHAT/i.test(t)
-                );
-
-                chatTables.forEach(tableName => {
-                    try {
-                        const colsRes = db.exec(`PRAGMA table_info("${tableName}")`);
-                        if (!colsRes.length) return;
-                        const cols = colsRes[0].values.map(c => c[1]);
-                        const cUpper = cols.map(c => c.toUpperCase());
-
-                        const res = db.exec(`SELECT * FROM "${tableName}"`);
-                        if (!res.length || !res[0].values) return;
-
-                        const pkIdx = cUpper.indexOf('Z_PK') !== -1 ? cUpper.indexOf('Z_PK') : cUpper.indexOf('ROWID');
-                        const midIdx = cUpper.indexOf('ZMID') !== -1 ? cUpper.indexOf('ZMID') : cUpper.indexOf('MID');
-
-                        const nameCols = ['ZNAME', 'ZTITLE', 'NAME', 'TITLE', 'CHAT_NAME'];
-                        const idCols = ['Z_PK', 'ROWID', 'ZMID', 'MID', 'ZCHATID', 'CHAT_ID'];
-                        const midCols = ['ZMID', 'MID', 'ZADDRESSBOOKID', 'ZUSER', 'ZOWNER'];
-
-                        res[0].values.forEach(row => {
-                            let pkVal = pkIdx !== -1 ? String(row[pkIdx]) : null;
-                            let midVal = midIdx !== -1 ? String(row[midIdx]) : null;
-
-                            if (pkVal && midVal) {
-                                acc.pkToMidMap[pkVal] = midVal;
-                                acc.midToPkMap[midVal] = pkVal;
-                            }
-
-                            let chatName = '';
-                            for (let nc of nameCols) {
-                                let idx = cUpper.indexOf(nc);
-                                if (idx !== -1 && row[idx] && String(row[idx]).trim() !== '') {
-                                    chatName = String(row[idx]).trim();
-                                    break;
-                                }
-                            }
-
-                            if (!chatName) {
-                                for (let mc of midCols) {
-                                    let idx = cUpper.indexOf(mc);
-                                    if (idx !== -1 && row[idx]) {
-                                        let mVal = String(row[idx]).trim();
-                                        if (globalUserMap[mVal]) {
-                                            chatName = globalUserMap[mVal];
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-
-                            idCols.forEach(ic => {
-                                let idx = cUpper.indexOf(ic);
-                                if (idx !== -1 && row[idx] !== null && row[idx] !== undefined) {
-                                    const val = String(row[idx]).trim();
-                                    if (val) {
-                                        if (chatName) globalChatMap[val] = chatName;
-                                        else if (globalUserMap[val]) globalChatMap[val] = globalUserMap[val];
-                                    }
-                                }
-                            });
-                        });
-                    } catch (e) {}
-                });
-            });
-        }
-
-        function resolveChatName(chatId) {
-            const key = String(chatId).trim();
-            if (globalChatMap[key]) return globalChatMap[key];
-            if (globalUserMap[key]) return globalUserMap[key];
-            return `トークルーム (ID: ${key})`;
-        }
-
-        function extractChatsFromAllAccounts() {
-            allDiscoveredChats = [];
-
-            accounts.forEach(acc => {
-                const { db, info, id, fileName } = acc;
-                if (!info.msgTable) return;
-
-                try {
-                    const chatCol = info.chatCol || 'ZCHAT';
-                    const timeCol = info.timeCol || 'ZCREATEDTIME';
-
-                    const query = `
-                        SELECT 
-                            m."${chatCol}" as chat_id,
-                            COUNT(*) as msg_count,
-                            MAX(m."${timeCol}") as last_time
-                        FROM "${info.msgTable}" m
-                        WHERE m."${chatCol}" IS NOT NULL
-                        GROUP BY m."${chatCol}"
-                    `;
-
-                    const res = db.exec(query);
-                    if (res.length && res[0].values) {
-                        res[0].values.forEach(row => {
-                            const [chatId, count, lastTime] = row;
-                            const rawKey = String(chatId).trim();
-                            
-                            let mappedMid = acc.pkToMidMap[rawKey] || rawKey;
-                            let resolvedName = resolveChatName(mappedMid);
-                            if (resolvedName.startsWith('トークルーム (ID:')) {
-                                resolvedName = resolveChatName(rawKey);
-                            }
-
-                            allDiscoveredChats.push({
-                                accountId: id,
-                                fileName: fileName,
-                                chatId: rawKey,
-                                mappedMid: mappedMid,
-                                chatName: resolvedName,
-                                msgCount: count,
-                                lastTime: lastTime
-                            });
-                        });
-                    }
-                } catch (e) { console.error(`ファイル ${fileName} からのトーク抽出失敗:`, e); }
-            });
-        }
-
-        function switchAccount(val) {
-            currentAccount = (val === 'all') ? 'all' : Number(val);
-            renderChatList();
-        }
-
-        function handleSearchInput(query) {
-            currentSearchQuery = query.trim().toLowerCase();
-            renderChatList();
-        }
-
-        function normalizeTimestamp(ts) {
-            if (!ts || isNaN(ts)) return 0;
-            let num = Number(ts);
-            if (num <= 0) return 0;
-
-            if (num > 100000000000000) return Math.floor(num / 1000); // マイクロ秒
-            if (num > 1000000000000) return num; // Unix ミリ秒
-            if (num > 100000000000) return 978307200000 + num; // iOS Cocoa ミリ秒
-            if (num > 1000000000) return num * 1000; // Unix 秒
-            return 978307200000 + (num * 1000); // iOS Cocoa 秒
-        }
-
-        function formatTimestamp(ts) {
-            if (!ts || isNaN(ts) || ts <= 0) return '';
-            const date = new Date(ts);
-            if (isNaN(date.getTime())) return '';
-
-            const y = date.getFullYear();
-            const m = String(date.getMonth() + 1).padStart(2, '0');
-            const d = String(date.getDate()).padStart(2, '0');
-            const hh = String(date.getHours()).padStart(2, '0');
-            const mm = String(date.getMinutes()).padStart(2, '0');
-
-            return `${y}/${m}/${d} ${hh}:${mm}`;
-        }
-
-        function escapeHtml(str) {
-            if (!str && str !== 0) return '';
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
-
-        function filterChatList(itemList, query) {
-            if (!query) return itemList;
-            const q = query.toLowerCase();
-
-            return itemList.filter(item => {
-                if (item.chatName.toLowerCase().includes(q)) return true;
-                if (String(item.chatId).toLowerCase().includes(q)) return true;
-                return false;
-            });
-        }
-
-        function renderChatList() {
-            const chatList = document.getElementById('chat-list');
-            chatList.innerHTML = '';
-
-            let itemsToDisplay = [];
-
-            if (currentAccount === 'all' || currentAccount === null) {
-                const groups = {};
-
-                allDiscoveredChats.forEach(chat => {
-                    let groupKey = chat.mappedMid || chat.chatId;
-                    if (!/^[ucg][0-9a-f]{32}$/i.test(groupKey) && chat.chatName && !chat.chatName.startsWith('トークルーム (ID:')) {
-                        groupKey = chat.chatName.toLowerCase();
-                    }
-
-                    if (!groups[groupKey]) {
-                        groups[groupKey] = {
-                            groupKey: groupKey,
-                            chatName: chat.chatName,
-                            chatId: chat.chatId,
-                            msgCount: 0,
-                            lastTime: 0,
-                            relatedItems: []
-                        };
-                    }
-
-                    groups[groupKey].msgCount += chat.msgCount;
-                    if (chat.lastTime > groups[groupKey].lastTime) {
-                        groups[groupKey].lastTime = chat.lastTime;
-                        if (!groups[groupKey].chatName.startsWith('トークルーム') || chat.chatName) {
-                            groups[groupKey].chatName = chat.chatName;
-                        }
-                    }
-                    groups[groupKey].relatedItems.push(chat);
-                });
-
-                itemsToDisplay = Object.values(groups);
             } else {
-                const targetAccId = Number(currentAccount);
-                itemsToDisplay = allDiscoveredChats
-                    .filter(c => c.accountId === targetAccId)
-                    .map(c => ({
-                        groupKey: c.chatId,
-                        chatName: c.chatName,
-                        chatId: c.chatId,
-                        msgCount: c.msgCount,
-                        lastTime: c.lastTime,
-                        relatedItems: [c]
-                    }));
+                files = Array.from(e.dataTransfer.files);
             }
+            if (files.length) await processFiles(files);
+        });
 
-            if (currentSearchQuery !== '') {
-                itemsToDisplay = filterChatList(itemsToDisplay, currentSearchQuery);
-            }
+        document.getElementById('file-single').addEventListener('change', e => processFiles(Array.from(e.target.files)));
+        document.getElementById('file-dir').addEventListener('change', e => processFiles(Array.from(e.target.files)));
 
-            itemsToDisplay.sort((a, b) => b.lastTime - a.lastTime);
-
-            if (itemsToDisplay.length === 0) {
-                chatList.innerHTML = `<div style="padding:20px; color:#888; font-size:12px; text-align:center;">
-                    ${currentSearchQuery ? `「${escapeHtml(currentSearchQuery)}」に一致するトークは見つかりませんでした` : 'トークデータが見つかりません'}
-                </div>`;
+        async function processFiles(files) {
+            document.getElementById('status-msg').innerText = 'ファイル読み込み中...';
+            let mainFile = files.find(f => f.name.endsWith('.sqlite')) || files[0];
+            
+            if (!mainFile) {
+                alert('有効な SQLite ファイルが見つかりません');
                 return;
             }
 
-            itemsToDisplay.forEach(itemData => {
-                const initial = (itemData.chatName || '?').charAt(0).toUpperCase();
+            try {
+                const buf = await mainFile.arrayBuffer();
+                db = new SQL.Database(new Uint8Array(buf));
 
-                const item = document.createElement('div');
-                item.className = 'chat-item';
-
-                let sourceBadge = '';
-                if (currentAccount === 'all') {
-                    const fileNames = Array.from(new Set(itemData.relatedItems.map(i => i.fileName)));
-                    sourceBadge = fileNames.length > 1 ? `${fileNames.length}ファイル統合` : fileNames[0];
-                } else {
-                    sourceBadge = itemData.relatedItems[0] ? itemData.relatedItems[0].fileName : '';
+                // WALファイルの簡易統合チェック（同名-walファイルが存在する場合）
+                let walFile = files.find(f => f.name.includes('-wal'));
+                if (walFile) {
+                    try {
+                        const walBuf = await walFile.arrayBuffer();
+                        db.register_via_offset && db.register_via_offset(walFile.name, new Uint8Array(walBuf));
+                        db.exec("PRAGMA wal_checkpoint(FULL);");
+                    } catch(e) { console.log('WAL auto-merge skipped'); }
                 }
 
-                item.innerHTML = `
-                    <div class="chat-avatar">${escapeHtml(initial)}</div>
-                    <div class="chat-info-body">
-                        <div class="chat-name">${escapeHtml(itemData.chatName)}</div>
-                        <div class="chat-meta">
-                            <span>${itemData.msgCount} 件のメッセージ</span>
-                            <span style="font-size:10px; background:#e0e0e0; padding:1px 4px; border-radius:3px;">${escapeHtml(sourceBadge)}</span>
-                        </div>
+                analyzeDbSchema();
+                loadDictionaries();
+                loadChatRooms();
+
+                dropZone.style.display = 'none';
+                document.getElementById('status-msg').style.display = 'none';
+                document.getElementById('app-container').style.display = 'flex';
+                document.getElementById('btn-print').style.display = 'inline-block';
+                document.getElementById('btn-reset').style.display = 'inline-block';
+
+                renderChatList(chatList);
+            } catch (err) {
+                alert('DB読み込みエラー: ' + err.message);
+            }
+        }
+
+        function analyzeDbSchema() {
+            const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'")[0].values.map(r => r[0]);
+            msgTable = tables.find(t => /ZMESSAGE|CHAT_HISTORY|MESSAGES/i.test(t));
+            
+            if (!msgTable) throw new Error('メッセージテーブルが見つかりません');
+
+            const cols = db.exec(`PRAGMA table_info("${msgTable}")`)[0].values.map(c => c[1]);
+            const uCols = cols.map(c => c.toUpperCase());
+
+            colInfo = {
+                chat: cols[uCols.findIndex(c => /ZCHAT|CHAT_ID|ROOM_ID|ZADDRESSBOOKID/i.test(c))],
+                text: cols[uCols.findIndex(c => /ZTEXT|ZCONTENT|TEXT|BODY|MESSAGE/i.test(c))],
+                time: cols[uCols.findIndex(c => /ZCREATEDTIME|ZTIMESTAMP|TIMESTAMP|CREATED_TIME/i.test(c))],
+                isMe: cols[uCols.findIndex(c => /ZISFROMME|ZISOUT|IS_ME|FROM_ME|IS_OUT/i.test(c))],
+                sender: cols[uCols.findIndex(c => /ZSENDER|SENDER_MID|SENDER_ID|FROM_MID/i.test(c))],
+                type: cols[uCols.findIndex(c => /ZCONTENTTYPE|ZTYPE|TYPE/i.test(c))]
+            };
+        }
+
+        function loadDictionaries() {
+            userMap = {}; chatMap = {};
+            const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'")[0].values.map(r => r[0]);
+
+            // User Dict
+            const userTab = tables.find(t => /ZUSER|ZCONTACT|USERS|CONTACTS/i.test(t));
+            if (userTab) {
+                try {
+                    const res = db.exec(`SELECT * FROM "${userTab}"`)[0];
+                    if (res) {
+                        const cols = res.columns.map(c => c.toUpperCase());
+                        const midIdx = cols.findIndex(c => /ZMID|MID|ID/i.test(c));
+                        const nameIdx = cols.findIndex(c => /ZCUSTOMNAME|ZNAME|ZDISPLAYNAME|NAME/i.test(c));
+                        if (midIdx !== -1 && nameIdx !== -1) {
+                            res.values.forEach(r => { if (r[midIdx] && r[nameIdx]) userMap[r[midIdx]] = r[nameIdx]; });
+                        }
+                    }
+                } catch(e) {}
+            }
+
+            // Chat Dict
+            const chatTab = tables.find(t => /ZCHAT|CHATS|ROOMS/i.test(t));
+            if (chatTab) {
+                try {
+                    const res = db.exec(`SELECT * FROM "${chatTab}"`)[0];
+                    if (res) {
+                        const cols = res.columns.map(c => c.toUpperCase());
+                        const pkIdx = cols.findIndex(c => /Z_PK|ROWID|ID/i.test(c));
+                        const nameIdx = cols.findIndex(c => /ZNAME|ZTITLE|TITLE|NAME/i.test(c));
+                        if (pkIdx !== -1 && nameIdx !== -1) {
+                            res.values.forEach(r => { if (r[pkIdx] && r[nameIdx]) chatMap[r[pkIdx]] = r[nameIdx]; });
+                        }
+                    }
+                } catch(e) {}
+            }
+        }
+
+        function loadChatRooms() {
+            const query = `
+                SELECT "${colInfo.chat}", COUNT(*), MAX("${colInfo.time}")
+                FROM "${msgTable}"
+                WHERE "${colInfo.chat}" IS NOT NULL
+                GROUP BY "${colInfo.chat}"
+                ORDER BY 3 DESC
+            `;
+            const res = db.exec(query)[0];
+            chatList = [];
+
+            if (res && res.values) {
+                res.values.forEach(r => {
+                    const id = String(r[0]);
+                    const name = chatMap[id] || userMap[id] || `トークルーム (${id})`;
+                    chatList.push({ id, name, count: r[1], lastTime: r[2] });
+                });
+            }
+        }
+
+        function renderChatList(list) {
+            const container = document.getElementById('chat-list');
+            container.innerHTML = '';
+            list.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'chat-item';
+                el.innerHTML = `
+                    <div class="chat-avatar">${item.name.charAt(0)}</div>
+                    <div class="chat-info">
+                        <div class="chat-name">${escapeHtml(item.name)}</div>
+                        <div class="chat-count">${item.count} 件のメッセージ</div>
                     </div>
                 `;
-
-                item.onclick = () => {
-                    document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
-                    item.classList.add('active');
-                    loadMessagesForChat(itemData, currentAccount);
+                el.onclick = () => {
+                    document.querySelectorAll('.chat-item').forEach(i => i.classList.remove('active'));
+                    el.classList.add('active');
+                    loadMessages(item);
                 };
-
-                chatList.appendChild(item);
+                container.appendChild(el);
             });
         }
 
-        // メモリ対策: 全カラム(SELECT *)を取得せず、軽量な特定のカラムのみ抽出
-        function getMessagesFromAccount(acc, targetChatItem) {
-            const { db, info, id, fileName } = acc;
-            const messages = [];
-            if (!info.msgTable) return { messages: [], error: 'メッセージテーブル未検出' };
+        function loadMessages(chat) {
+            const view = document.getElementById('chat-view');
+            view.innerHTML = '';
 
-            try {
-                const chatCol = info.chatCol || 'ZCHAT';
-                const timeCol = info.timeCol || 'ZCREATEDTIME';
-
-                let idConditions = [];
-                const idSet = new Set();
-
-                if (targetChatItem.chatId) idSet.add(String(targetChatItem.chatId).trim());
-                if (targetChatItem.mappedMid) idSet.add(String(targetChatItem.mappedMid).trim());
-                if (targetChatItem.chatId && acc.pkToMidMap[targetChatItem.chatId]) idSet.add(String(acc.pkToMidMap[targetChatItem.chatId]).trim());
-                if (targetChatItem.mappedMid && acc.midToPkMap[targetChatItem.mappedMid]) idSet.add(String(acc.midToPkMap[targetChatItem.mappedMid]).trim());
-
-                idSet.forEach(idVal => {
-                    const safeId = idVal.replace(/'/g, "''");
-                    idConditions.push(`CAST("${chatCol}" AS TEXT) = '${safeId}'`);
-                    if (/^\d+$/.test(idVal)) {
-                        idConditions.push(`"${chatCol}" = ${idVal}`);
-                    }
-                });
-
-                const whereClause = idConditions.length > 0 ? `WHERE (${idConditions.join(' OR ')})` : '';
-                
-                // カラムの軽量選択 (SELECT * を回避)
-                const targetCols = [];
-                if (timeCol) targetCols.push(`"${timeCol}"`);
-                if (info.isMeCol) targetCols.push(`"${info.isMeCol}"`);
-                if (info.senderCol) targetCols.push(`"${info.senderCol}"`);
-                if (info.typeCol) targetCols.push(`"${info.typeCol}"`);
-                info.textCols.forEach(c => targetCols.push(`"${c}"`));
-
-                const selectClause = targetCols.length > 0 ? Array.from(new Set(targetCols)).join(', ') : '*';
-                const query = `SELECT ${selectClause} FROM "${info.msgTable}" ${whereClause}`;
-                
-                const res = db.exec(query);
-
-                if (res.length && res[0].values) {
-                    const columns = res[0].columns;
-                    const cUpper = columns.map(c => c.toUpperCase());
-
-                    const timeIdx = timeCol ? cUpper.indexOf(timeCol.toUpperCase()) : -1;
-                    const isMeIdx = info.isMeCol ? cUpper.indexOf(info.isMeCol.toUpperCase()) : -1;
-                    const senderIdx = info.senderCol ? cUpper.indexOf(info.senderCol.toUpperCase()) : -1;
-                    const typeIdx = info.typeCol ? cUpper.indexOf(info.typeCol.toUpperCase()) : -1;
-
-                    const possibleTextCols = ['ZTEXT', 'ZCONTENT', 'ZBODY', 'TEXT', 'CONTENT', 'BODY', 'ZMESSAGE_TEXT', 'MESSAGE_TEXT', 'ZMESSAGE', 'MESSAGE'];
-                    const textIndices = [];
-                    columns.forEach((col, idx) => {
-                        const colName = col.toUpperCase();
-                        if (possibleTextCols.includes(colName) || colName.includes('TEXT') || colName.includes('CONTENT') || colName.includes('BODY')) {
-                            textIndices.push(idx);
-                        }
-                    });
-
-                    res[0].values.forEach(row => {
-                        let textContent = '';
-                        for (let idx of textIndices) {
-                            if (row[idx] !== null && row[idx] !== undefined) {
-                                const val = row[idx];
-                                if (val instanceof Uint8Array) {
-                                    textContent = new TextDecoder('utf-8', { fatal: false }).decode(val);
-                                } else {
-                                    textContent = String(val);
-                                }
-                                if (textContent.trim() !== '') break;
-                            }
-                        }
-
-                        let typeVal = typeIdx !== -1 ? row[typeIdx] : null;
-
-                        if (!textContent || textContent.trim() === '') {
-                            if (typeVal !== null && CONTENT_TYPE_MAP[typeVal]) {
-                                textContent = CONTENT_TYPE_MAP[typeVal];
-                            } else {
-                                textContent = '[スタンプ / 画像 / メディア / 暗号化トーク]';
-                            }
-                        } else if (typeVal !== null && typeVal !== 0 && typeVal !== '0') {
-                            const typeLabel = CONTENT_TYPE_MAP[typeVal];
-                            if (typeLabel && !textContent.startsWith(typeLabel)) {
-                                textContent = `${typeLabel}\n${textContent}`;
-                            }
-                        }
-
-                        let isMe = false;
-                        if (isMeIdx !== -1) {
-                            let val = row[isMeIdx];
-                            isMe = (val === 1 || val === '1' || val === true || String(val).toLowerCase() === 'true');
-                        }
-
-                        let senderRaw = senderIdx !== -1 ? row[senderIdx] : null;
-                        let senderName = '';
-                        if (isMe) {
-                            senderName = '自分';
-                        } else if (senderRaw !== null && senderRaw !== undefined) {
-                            const sStr = String(senderRaw).trim();
-                            senderName = globalUserMap[sStr] || globalChatMap[sStr] || '';
-                        }
-
-                        let rawTime = timeIdx !== -1 ? row[timeIdx] : null;
-                        let normTime = normalizeTimestamp(rawTime);
-
-                        messages.push({
-                            accountId: id,
-                            fileName: fileName,
-                            rawTime: rawTime,
-                            normTime: normTime,
-                            isMe: isMe,
-                            senderName: senderName,
-                            textContent: textContent,
-                            typeVal: typeVal
-                        });
-                    });
-                }
-                return { messages, error: null };
-            } catch (e) {
-                console.error(`メッセージ取得失敗 (${fileName}):`, e);
-                return { messages: [], error: e.message };
-            }
-        }
-
-        function loadMessagesForChat(targetChat, accountId) {
-            const chatView = document.getElementById('chat-view');
-            chatView.innerHTML = '';
-
-            let allMsgs = [];
-            let sourceFiles = new Set();
-            let errors = [];
-
-            const itemsToProcess = (accountId === 'all' || accountId === null)
-                ? (targetChat.relatedItems || [targetChat])
-                : [(targetChat.relatedItems && targetChat.relatedItems[0]) ? targetChat.relatedItems[0] : targetChat];
-
-            itemsToProcess.forEach(item => {
-                const acc = accounts[item.accountId];
-                if (acc) {
-                    sourceFiles.add(acc.fileName);
-                    const { messages, error } = getMessagesFromAccount(acc, item);
-                    if (error) errors.push(`${acc.fileName}: ${error}`);
-                    allMsgs.push(...messages);
-                }
-            });
-
-            allMsgs.sort((a, b) => a.normTime - b.normTime);
-
-            const sourcesStr = Array.from(sourceFiles).join(', ');
-            const headerEl = document.createElement('div');
-            headerEl.className = 'chat-header-info';
-            headerEl.innerHTML = `
-                <h2>💬 ${escapeHtml(targetChat.chatName)}</h2>
-                <div style="font-size:12px; color:#555; margin-top:4px;">
-                    <span>全 ${allMsgs.length} 件のメッセージ | </span>
-                    <span>ソース: <strong>${escapeHtml(sourcesStr)}</strong></span>
-                </div>
+            const safeId = chat.id.replace(/'/g, "''");
+            const query = `
+                SELECT 
+                    "${colInfo.text}", 
+                    "${colInfo.isMe}", 
+                    "${colInfo.sender}", 
+                    "${colInfo.time}", 
+                    "${colInfo.type}"
+                FROM "${msgTable}"
+                WHERE CAST("${colInfo.chat}" AS TEXT) = '${safeId}' OR "${colInfo.chat}" = '${safeId}'
+                ORDER BY "${colInfo.time}" ASC
             `;
-            chatView.appendChild(headerEl);
 
-            if (errors.length > 0) {
-                const errBox = document.createElement('div');
-                errBox.className = 'error-log';
-                errBox.innerHTML = `<strong>⚠️ メッセージ読み込み中の警告・エラー:</strong>\n${escapeHtml(errors.join('\n'))}`;
-                chatView.appendChild(errBox);
-            }
+            const res = db.exec(query)[0];
+            if (!res || !res.values) return;
 
-            if (allMsgs.length === 0) {
-                const emptyEl = document.createElement('div');
-                emptyEl.style.cssText = 'text-align:center; color:#fff; padding:30px;';
-                emptyEl.innerText = '表示できるメッセージが見つかりませんでした。';
-                chatView.appendChild(emptyEl);
-                return;
-            }
+            const msgs = res.values.map(r => {
+                let text = r[0] || '';
+                let isMeFlag = r[1];
+                let senderId = r[2];
+                let rawTime = r[3];
+                let type = r[4];
 
-            // 大量件数描画時のフリーズ防止策（最新 RENDER_LIMIT 件のみ初期表示）
-            let msgsToRender = allMsgs;
-            if (allMsgs.length > RENDER_LIMIT) {
+                // 自分の判定ロジック強化
+                let isMe = false;
+                if (isMeFlag !== null && isMeFlag !== undefined) {
+                    isMe = (isMeFlag !== 0 && isMeFlag !== '0' && isMeFlag !== false);
+                } else if (!senderId) {
+                    isMe = true;
+                }
+
+                let senderName = isMe ? '自分' : (userMap[senderId] || chat.name);
+
+                if (!text || text.trim() === '') {
+                    text = type === 1 ? '[画像]' : type === 2 ? '[動画]' : type === 11 ? '[スタンプ]' : '[メディア/ファイル]';
+                }
+
+                return { text, isMe, senderName, time: formatTime(rawTime) };
+            });
+
+            // ヘッダー作成
+            const header = document.createElement('div');
+            header.className = 'chat-header';
+            header.innerHTML = `<h2>${escapeHtml(chat.name)}</h2><div>全 ${msgs.length} 件</div>`;
+            view.appendChild(header);
+
+            // 件数が多い場合の制限表示
+            let renderMsgs = msgs;
+            if (msgs.length > RENDER_LIMIT) {
                 const loadBtn = document.createElement('button');
                 loadBtn.className = 'load-more-btn';
-                loadBtn.innerText = `全 ${allMsgs.length} 件中、古いメッセージをさらに読み込む`;
+                loadBtn.innerText = `過去のメッセージを表示 (全 ${msgs.length} 件)`;
                 loadBtn.onclick = () => {
                     loadBtn.remove();
-                    renderMessageBatch(chatView, allMsgs.slice(0, allMsgs.length - RENDER_LIMIT), targetChat, true);
+                    renderBatch(view, msgs.slice(0, msgs.length - RENDER_LIMIT), true);
                 };
-                chatView.appendChild(loadBtn);
-                msgsToRender = allMsgs.slice(allMsgs.length - RENDER_LIMIT);
+                view.appendChild(loadBtn);
+                renderMsgs = msgs.slice(msgs.length - RENDER_LIMIT);
             }
 
-            renderMessageBatch(chatView, msgsToRender, targetChat, false);
-            chatView.scrollTop = chatView.scrollHeight;
+            renderBatch(view, renderMsgs, false);
+            view.scrollTop = view.scrollHeight;
         }
 
-        function renderMessageBatch(container, msgs, targetChat, prepend = false) {
-            const fragment = document.createDocumentFragment();
-
-            msgs.forEach(msg => {
-                const sender = msg.senderName || (msg.isMe ? '自分' : targetChat.chatName);
-                const timeStr = formatTimestamp(msg.normTime);
-
-                const msgRow = document.createElement('div');
-                msgRow.className = `msg-row ${msg.isMe ? 'me' : 'other'}`;
-                msgRow.innerHTML = `
-                    <div class="msg-header-line">
-                        <span class="msg-sender-badge">${escapeHtml(sender)}</span>
-                        <span class="msg-timestamp">${escapeHtml(timeStr)}</span>
+        function renderBatch(container, msgs, prepend = false) {
+            const frag = document.createDocumentFragment();
+            msgs.forEach(m => {
+                const row = document.createElement('div');
+                row.className = `msg-row ${m.isMe ? 'me' : 'other'}`;
+                row.innerHTML = `
+                    <div class="msg-meta">
+                        <span class="msg-sender">${escapeHtml(m.senderName)}</span>
+                        <span>${m.time}</span>
                     </div>
-                    <div class="bubble-container">
-                        <div class="bubble">${escapeHtml(msg.textContent).replace(/\n/g, '<br>')}</div>
-                    </div>
+                    <div class="bubble">${escapeHtml(m.text).replace(/\n/g, '<br>')}</div>
                 `;
-                fragment.appendChild(msgRow);
+                frag.appendChild(row);
             });
 
             if (prepend) {
-                const header = container.querySelector('.chat-header-info');
-                if (header && header.nextSibling) {
-                    container.insertBefore(fragment, header.nextSibling);
-                } else {
-                    container.prepend(fragment);
-                }
+                const header = container.querySelector('.chat-header');
+                container.insertBefore(frag, header.nextSibling);
             } else {
-                container.appendChild(fragment);
+                container.appendChild(frag);
             }
+        }
+
+        function filterList(q) {
+            const query = q.toLowerCase();
+            const filtered = chatList.filter(c => c.name.toLowerCase().includes(query) || c.id.toLowerCase().includes(query));
+            renderChatList(filtered);
+        }
+
+        function formatTime(ts) {
+            if (!ts) return '';
+            let num = Number(ts);
+            if (num > 1000000000000) num = num; // ms
+            else if (num > 1000000000) num = num * 1000; // s
+            else num = 978307200000 + (num * 1000); // Cocoa epoch
+            
+            const d = new Date(num);
+            return isNaN(d.getTime()) ? '' : `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        }
+
+        function escapeHtml(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
     </script>
 </body>

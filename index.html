@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LINE トーク・深層解析＆横断検索ツール</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
+    <!-- sql-asm.js から WebAssembly版の sql-wasm.js に変更 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -162,7 +163,10 @@
             14: '📞 [通話履歴]', 15: '📎 [ファイル]', 16: '🔗 [リンク]', 18: '✨ [アニメスタンプ]'
         };
 
-        initSqlJs().then(sqlEngine => {
+        // WebAssembly版のパス設定を追加
+        initSqlJs({
+            locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+        }).then(sqlEngine => {
             SQL = sqlEngine;
             document.getElementById('status-msg').innerText = '準備完了: ファイルまたはフォルダを選択・ドロップしてください';
         }).catch(err => {
@@ -267,23 +271,25 @@
                         const dbInstance = new SQL.Database(new Uint8Array(arrayBuffer));
                         const dbInfo = analyzeDatabase(dbInstance);
 
-                        const accIndex = accounts.length;
-                        const accountObj = {
-                            id: accIndex,
-                            fileName: file.name,
-                            filePath: path,
-                            fileSize: `${sizeMB} MB`,
-                            db: dbInstance,
-                            info: dbInfo,
-                            pkToMidMap: {},
-                            midToPkMap: {}
-                        };
-                        accounts.push(accountObj);
-
                         const isValid = !!(dbInfo.msgTable || dbInfo.userTable || dbInfo.chatTable);
                         detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: isValid });
 
-                        if (!isValid) {
+                        if (isValid) {
+                            const accIndex = accounts.length;
+                            const accountObj = {
+                                id: accIndex,
+                                fileName: file.name,
+                                filePath: path,
+                                fileSize: `${sizeMB} MB`,
+                                db: dbInstance,
+                                info: dbInfo,
+                                pkToMidMap: {},
+                                midToPkMap: {}
+                            };
+                            accounts.push(accountObj);
+                        } else {
+                            // LINE関連テーブルがない非対応DBの場合はクローズしてメモリ解放
+                            dbInstance.close();
                             debugLogs.push(`ファイル "${file.name}" はSQLiteですが、LINE関連テーブルが見つかりませんでした。`);
                         }
                     } catch (e) {
@@ -772,7 +778,6 @@
                     const senderIdx = info.senderCol ? cUpper.indexOf(info.senderCol.toUpperCase()) : -1;
                     const typeIdx = info.typeCol ? cUpper.indexOf(info.typeCol.toUpperCase()) : -1;
 
-                    // 本文カラムの柔軟な取得
                     const possibleTextCols = ['ZTEXT', 'ZCONTENT', 'ZBODY', 'TEXT', 'CONTENT', 'BODY', 'ZMESSAGE_TEXT', 'MESSAGE_TEXT', 'ZMESSAGE', 'MESSAGE'];
                     const textIndices = [];
                     columns.forEach((col, idx) => {

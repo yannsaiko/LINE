@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴マルチビューア (完全スタンドアロン版)</title>
+    <title>LINE トーク履歴マルチビューア (ローカル直接起動対応版)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f5f5f5; color: #333; }
@@ -57,8 +57,8 @@
         
         #status-bar { background: #333; color: white; font-size: 12px; padding: 6px 15px; }
     </style>
-    <!-- .wasm ファイルのロードを必要としない asm.js 版の sql.js を読み込むことで file:// プロトコルの CORS 制約を回避 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
+    <!-- jsDelivr経由で外部WASMを必要としない完全包含型sql-asm.jsを読み込み（file://起動に対応） -->
+    <script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-asm.js"></script>
 </head>
 <body>
     <header>
@@ -104,7 +104,7 @@
                 if (typeof initSqlJs === 'undefined') {
                     throw new Error("sql.js ライブラリが読み込まれていません。インターネット接続を確認してください。");
                 }
-                // asm.js版を使用するため locateFile なしで初期化可能
+                // asm.js版を使用（追加の.wasmファイルダウンロードを発生させずローカルファイル起動でも動作します）
                 SQL = await initSqlJs();
                 updateStatus('準備完了: SQLiteファイルをドロップしてください');
             } catch (err) {

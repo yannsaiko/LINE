@@ -4,18 +4,33 @@ import os
 import sys
 from datetime import datetime
 
-# Cocoa Epoch offset (2001-01-01 -> Unix Epoch)
 COCOA_OFFSET = 978307200
 
+def find_database_file(target_path):
+    """ファイルまたはフォルダからDBファイルを特定する"""
+    if os.path.isfile(target_path):
+        return target_path
+    
+    if os.path.isdir(target_path):
+        print(f"フォルダ内を検索中: {target_path}")
+        for root, dirs, files in os.walk(target_path):
+            for file in files:
+                if file.lower() in ['line.sqlite', 'talk.sqlite', 'naver_line']:
+                    found = os.path.join(root, file)
+                    print(f"-> データベース発見: {found}")
+                    return found
+    return None
+
 def parse_line_db(db_path):
-    if not os.path.exists(db_path):
-        print(f"エラー: ファイルが見つかりません -> {db_path}")
+    actual_db_path = find_database_file(db_path)
+    
+    if not actual_db_path or not os.path.exists(actual_db_path):
+        print(f"エラー: 有効なLINEデータベース (Line.sqlite / Talk.sqlite) がフォルダ内に見つかりませんでした。")
         return None
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(actual_db_path)
     cursor = conn.cursor()
 
-    # テーブル一覧の取得
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = [row[0] for row in cursor.fetchall()]
 
@@ -23,7 +38,7 @@ def parse_line_db(db_path):
     is_android = 'chat_history' in tables
 
     if not (is_ios or is_android):
-        print("エラー: 有効なLINEデータベース (ZMESSAGE または chat_history) が見つかりませんでした。")
+        print("エラー: 読み込んだファイルはLINEのデータベースではありません。")
         conn.close()
         return None
 
@@ -33,8 +48,6 @@ def parse_line_db(db_path):
 
     if is_ios:
         print("[検出] iOS版データベース (Line.sqlite)")
-        
-        # ユーザー辞書
         if 'ZUSER' in tables:
             try:
                 cursor.execute("SELECT ZMID, COALESCE(ZCUSTOMNAME, ZNAME) FROM ZUSER")
@@ -42,7 +55,6 @@ def parse_line_db(db_path):
                     if mid and name: user_map[str(mid)] = name
             except Exception: pass
 
-        # チャット部屋辞書
         if 'ZCHAT' in tables:
             try:
                 cursor.execute("SELECT Z_PK, ZNAME FROM ZCHAT")
@@ -50,7 +62,6 @@ def parse_line_db(db_path):
                     if pk and name: chat_map[str(pk)] = name
             except Exception: pass
 
-        # メッセージ抽出
         query = """
             SELECT ZCHAT, ZTEXT, ZISFROMME, ZSENDER, ZCREATEDTIME, ZCONTENTTYPE
             FROM ZMESSAGE
@@ -67,13 +78,11 @@ def parse_line_db(db_path):
                     "messages": []
                 }
 
-            # 時刻変換 (Cocoa Epoch)
             ts = (raw_time + COCOA_OFFSET) if raw_time else 0
             dt_str = datetime.fromtimestamp(ts).strftime('%Y/%m/%d %H:%M') if ts > 0 else ''
 
             is_me_bool = bool(is_me)
             sender_name = "自分" if is_me_bool else user_map.get(str(sender_id), chats_data[chat_key]["name"])
-            
             content = text if text else get_media_label(msg_type)
 
             chats_data[chat_key]["messages"].append({
@@ -85,7 +94,6 @@ def parse_line_db(db_path):
 
     elif is_android:
         print("[検出] Android版データベース (Talk.sqlite)")
-        
         if 'contacts' in tables:
             try:
                 cursor.execute("SELECT m_id, COALESCE(custom_name, name) FROM contacts")
@@ -141,7 +149,7 @@ def generate_html_viewer(parsed_data, output_file="index.html"):
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>LINE Talk Viewer (GitHub Edition)</title>
+    <title>LINE Talk Viewer</title>
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
         body {{ font-family: -apple-system, sans-serif; display: flex; height: 100vh; background: #f0f2f5; }}
@@ -177,12 +185,11 @@ def generate_html_viewer(parsed_data, output_file="index.html"):
 
     <script>
         const chatData = {json_bytes};
-        let currentChats = chatData;
 
         function renderList(list) {{
             const container = document.getElementById('chat-list');
             container.innerHTML = '';
-            list.forEach((c, idx) => {{
+            list.forEach((c) => {{
                 const div = document.createElement('div');
                 div.className = 'chat-item';
                 div.innerText = `${{c.name}} (${{c.messages.length}}件)`;
@@ -223,14 +230,14 @@ def generate_html_viewer(parsed_data, output_file="index.html"):
 
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print(f"[成功] 閲覧レポートを出力しました: {os.path.abspath(output_file)}")
+    print(f"[成功] 閲覧用ファイルを出力しました: {os.path.abspath(output_file)}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("使用方法: python line_parser.py <Line.sqliteまたはTalk.sqliteのパス>")
+        print("使用方法: python line_parser.py <フォルダまたはDBファイルのパス>")
         sys.exit(1)
 
-    db_path = sys.argv[1]
-    data = parse_line_db(db_path)
+    target_path = sys.argv[1]
+    data = parse_line_db(target_path)
     if data:
         generate_html_viewer(data)

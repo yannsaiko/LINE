@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク・深層解析＆横断検索ツール</title>
+    <title>LINE トーク・深層解析＆横断検索ツール (iOS最適化版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -84,7 +84,6 @@
         .file-badge { display: inline-block; padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; }
         .badge-db { background: #007bff; }
         .badge-wal { background: #e67e22; }
-        .badge-media { background: #28a745; }
 
         #chat-list { flex: 1; overflow-y: auto; }
         .chat-item { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; display: flex; align-items: center; gap: 12px; }
@@ -113,16 +112,13 @@
         .me .bubble { background-color: #85e249; border-top-right-radius: 2px; }
         .other .bubble { background-color: #ffffff; border-top-left-radius: 2px; }
 
-        .all-fields-container { margin-top: 6px; width: 100%; }
-        .all-fields-toggle { background: rgba(0,0,0,0.5); color: #fff; border: none; padding: 4px 8px; font-size: 10px; border-radius: 4px; cursor: pointer; }
-        .all-fields-content { display: none; background: #1e1e1e; color: #00ff66; font-family: monospace; font-size: 11px; padding: 10px; border-radius: 6px; margin-top: 4px; max-height: 350px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
-        .error-log { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 6px; margin-top: 10px; text-align: left; font-size: 12px; font-family: monospace; }
+        .error-log { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px; border-radius: 6px; margin-top: 15px; text-align: left; font-size: 12px; font-family: monospace; max-height: 250px; overflow-y: auto; }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>LINE トーク・深層解析＆全ファイル横断検索ツール</h1>
+        <h1>LINE トーク・深層解析＆横断検索ツール (iOS対応強化版)</h1>
         <div class="header-actions">
             <button id="btn-reset" class="btn btn-reset" onclick="location.reload()">↺ 最初からやり直す</button>
             <button id="btn-print" class="btn btn-print" onclick="window.print()">🖨 印刷 (PDF保存)</button>
@@ -130,9 +126,9 @@
     </header>
 
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <h3>📁 ここにLINEのデータフォルダ / ファイル群をドロップ</h3>
+        <h3>📁 ここに LINE データまたは iTunes バックアップフォルダをドロップ</h3>
         <p style="color: #666; font-size: 13px;">
-            <code>Line.sqlite</code> / 複数アカウント / バックアップフォルダを一括読み込み・横断検索します
+            <code>Line.sqlite</code> ファイル単体、または <b>iOSバックアップフォルダ全体</b> をドロップしてください
         </p>
         <input type="file" id="file-input" webkitdirectory directory multiple>
     </div>
@@ -160,20 +156,14 @@
     <script>
         let accounts = [];
         let currentAccount = null;
-        let isMeReversed = false;
         let activeChatParams = null;
         let allDiscoveredChats = [];
         let currentSearchQuery = '';
         let debugLogs = [];
+        let manifestMap = {}; // Manifest.db のハッシュマッピング
 
-        let detectedRegistry = { databases: [], walShm: [], media: [], configs: [] };
+        let detectedRegistry = { databases: [], walShm: [] };
         let SQL = null;
-
-        const CONTENT_TYPE_MAP = {
-            0: '💬 テキスト', 1: '🖼 画像', 2: '🎥 動画', 3: '🎙 音声',
-            7: '📍 位置情報', 11: '🎨 スタンプ', 12: '🎴 連絡先', 13: '📓 ノート',
-            14: '📞 通話', 15: '📎 ファイル', 16: '🔗 リンク', 18: '✨ アニメスタンプ'
-        };
 
         initSqlJs().then(sqlEngine => {
             SQL = sqlEngine;
@@ -188,17 +178,16 @@
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); });
         dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
-            const items = e.dataTransfer.items;
             let filesToProcess = [];
             document.getElementById('status-msg').innerText = 'フォルダー構造を走査中...';
 
-            if (items && items.length > 0) {
+            if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
                 let entryPromises = [];
-                for (let i = 0; i < items.length; i++) {
-                    const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+                for (let i = 0; i < e.dataTransfer.items.length; i++) {
+                    const entry = e.dataTransfer.items[i].webkitGetAsEntry ? e.dataTransfer.items[i].webkitGetAsEntry() : null;
                     if (entry) entryPromises.push(traverseFileTree(entry));
                     else {
-                        const file = items[i].getAsFile();
+                        const file = e.dataTransfer.items[i].getAsFile();
                         if (file) filesToProcess.push(file);
                     }
                 }
@@ -250,16 +239,34 @@
         async function handleFiles(fileList) {
             if (!SQL) return;
             const statusEl = document.getElementById('status-msg');
-            detectedRegistry = { databases: [], walShm: [], media: [], configs: [] };
+            detectedRegistry = { databases: [], walShm: [] };
             accounts = [];
             allDiscoveredChats = [];
             debugLogs = [];
+            manifestMap = {};
+
+            // 1. Manifest.db (iTunesバックアップのマッピングDB) が含まれていれば先行解析
+            const manifestFile = fileList.find(f => f.name.toLowerCase() === 'manifest.db');
+            if (manifestFile) {
+                statusEl.innerText = 'iTunesバックアップ構成(Manifest.db)を解析中...';
+                try {
+                    const arrayBuffer = await manifestFile.arrayBuffer();
+                    const manifestDb = new SQL.Database(new Uint8Array(arrayBuffer));
+                    const res = manifestDb.exec("SELECT fileID, relativePath FROM Files WHERE domain LIKE '%line%' OR relativePath LIKE '%line%'");
+                    if (res.length && res[0].values) {
+                        res[0].values.forEach(row => {
+                            manifestMap[row[0]] = row[1]; // fileID -> relativePath
+                        });
+                    }
+                } catch(e) { console.warn("Manifest.db解析失敗", e); }
+            }
+
             const totalFiles = fileList.length;
 
             for (let i = 0; i < totalFiles; i++) {
                 const file = fileList[i];
                 const name = file.name.toLowerCase();
-                const path = file.webkitRelativePath || file.name;
+                const path = manifestMap[file.name] || file.webkitRelativePath || file.name;
                 const sizeMB = (file.size / 1024 / 1024).toFixed(2);
 
                 if (i % 20 === 0 || i === totalFiles - 1) {
@@ -267,15 +274,13 @@
                     await new Promise(r => setTimeout(r, 0));
                 }
 
-                if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) {
+                if (name.endsWith('-wal') || name.endsWith('-shm')) {
                     detectedRegistry.walShm.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
                 }
 
                 if (await isSqliteHeader(file)) {
                     try {
-                        statusEl.innerText = `データベース構造解析中: ${file.name} (${sizeMB} MB)...`;
-                        await new Promise(r => setTimeout(r, 0));
                         const arrayBuffer = await file.arrayBuffer();
                         const dbInstance = new SQL.Database(new Uint8Array(arrayBuffer));
                         const dbInfo = analyzeDatabase(dbInstance);
@@ -283,34 +288,37 @@
                         if (dbInfo.msgTable) {
                             buildNameDictionary(dbInstance, dbInfo);
                             const accIndex = accounts.length;
+                            const displayName = manifestMap[file.name] ? manifestMap[file.name] : file.name;
                             const accountObj = {
                                 id: accIndex,
-                                fileName: file.name,
+                                fileName: displayName,
                                 filePath: path,
                                 fileSize: `${sizeMB} MB`,
                                 db: dbInstance,
                                 info: dbInfo
                             };
                             accounts.push(accountObj);
-                            detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: true });
+                            detectedRegistry.databases.push({ name: displayName, path, size: `${sizeMB} MB`, isValidLineDb: true });
                             extractChatsFromAccount(accountObj);
                         } else {
-                            debugLogs.push(`ファイル "${file.name}" はSQLiteですが、LINEのメッセージテーブル（ZMESSAGE / chat_history等）が見つかりませんでした。検出テーブル: [${dbInfo.allTables.join(', ')}]`);
+                            if (file.size > 100000) { // 100KB以上のDBのみログ記録
+                                debugLogs.push(`[${file.name}] SQLiteですがLINEのメッセージテーブルが見つかりません。テーブル一覧: [${dbInfo.allTables.join(', ')}]`);
+                            }
                             detectedRegistry.databases.push({ name: file.name, path, size: `${sizeMB} MB`, isValidLineDb: false });
                         }
                     } catch (e) {
-                        debugLogs.push(`ファイル "${file.name}" の解析失敗: ${e.message}`);
+                        debugLogs.push(`[${file.name}] 解析失敗: ${e.message}`);
                     }
                 }
             }
 
             if (accounts.length === 0) {
-                let logHtml = debugLogs.length > 0 ? `<div class="error-log"><strong>【詳細ログ】</strong><br>${debugLogs.join('<br>')}</div>` : '';
+                let logHtml = debugLogs.length > 0 ? `<div class="error-log"><strong>【解析ログ】</strong><br>${debugLogs.join('<br>')}</div>` : '';
                 statusEl.innerHTML = `
                     <span style="color:red; font-weight:bold; font-size:15px;">有効な LINE データベースが見つかりませんでした。</span>
                     <p style="font-size:12px; color:#555; margin-top:8px;">
-                        ※ 読み込ませたファイルが暗号化されているか、<code>Line.sqlite</code> 以外のファイルである可能性があります。<br>
-                        iOSの未暗号化バックアップ（Line.sqlite）をドロップしているか確認してください。
+                        ※ バックアップが暗号化されているか、LINE以外のデータフォルダが選択されている可能性があります。<br>
+                        非暗号化バックアップ内の <code>Line.sqlite</code> を直接ドロップするか、親フォルダ全体を選択してください。
                     </p>
                     ${logHtml}`;
                 return;
@@ -340,11 +348,12 @@
         function renderRegistrySummary() {
             const summaryEl = document.getElementById('file-summary');
             summaryEl.innerHTML = `
-                <div style="font-weight:bold; margin-bottom:4px; color:#111;">🔍 自動検知された関連ファイル群:</div>
-                <div><span class="file-badge badge-db">DB</span> ${detectedRegistry.databases.filter(d=>d.isValidLineDb).length}件 | <span class="file-badge badge-wal">WAL</span> ${detectedRegistry.walShm.length}件</div>
+                <div style="font-weight:bold; margin-bottom:4px; color:#111;">🔍 自動識別されたLINEデータベース:</div>
+                <div><span class="file-badge badge-db">LINE DB</span> ${detectedRegistry.databases.filter(d=>d.isValidLineDb).length}件 | <span class="file-badge badge-wal">WAL</span> ${detectedRegistry.walShm.length}件</div>
             `;
         }
 
+        // iOS CoreData動的テーブル名に対応した判定ロジック
         function analyzeDatabase(db) {
             let info = { 
                 allTables: [],
@@ -357,44 +366,58 @@
                 if (!res.length) return info;
                 info.allTables = res[0].values.map(r => r[0]);
 
-                const findTable = (candidates) => {
-                    for (let cand of candidates) {
-                        let match = info.allTables.find(t => t.toUpperCase() === cand.toUpperCase());
-                        if (match) return match;
-                    }
-                    for (let cand of candidates) {
-                        let match = info.allTables.find(t => t.toUpperCase().includes(cand.toUpperCase()));
+                const findTableByRegex = (patterns) => {
+                    for (let pat of patterns) {
+                        let match = info.allTables.find(t => pat.test(t));
                         if (match) return match;
                     }
                     return null;
                 };
 
-                // iOS/Android/PC版のテーブル名候補を大幅に拡張
-                info.msgTable = findTable(['ZMESSAGE', 'Z_MESSAGE', 'CHAT_HISTORY', 'MESSAGES', 'MESSAGE', 'TALK_HISTORY', 'CHAT_HISTORY_V2']);
-                info.chatTable = findTable(['ZCHAT', 'Z_CHAT', 'CHATS', 'CHAT_ROOMS', 'ROOMS', 'CHAT_MEMBER']);
-                info.userTable = findTable(['ZUSER', 'Z_USER', 'ZCONTACT', 'Z_CONTACT', 'USERS', 'CONTACTS', 'FRIENDS', 'BUDDY']);
+                // CoreDataの動的テーブル名 (Z_15MESSAGE, ZMESSAGE, CHAT_HISTORY等) に対応
+                info.msgTable = findTableByRegex([
+                    /^Z.*MESSAGE$/i,
+                    /^Z_.*MESSAGE/i,
+                    /MESSAGE/i,
+                    /CHAT_HISTORY/i,
+                    /TALK_HISTORY/i
+                ]);
+
+                info.chatTable = findTableByRegex([
+                    /^Z.*CHAT$/i,
+                    /^Z_.*CHAT/i,
+                    /CHAT/i,
+                    /ROOM/i
+                ]);
+
+                info.userTable = findTableByRegex([
+                    /^Z.*USER$/i,
+                    /^Z.*CONTACT$/i,
+                    /USER/i,
+                    /CONTACT/i,
+                    /BUDDY/i
+                ]);
 
                 if (info.msgTable) {
                     const colsRes = db.exec(`PRAGMA table_info(${info.msgTable})`);
                     if (colsRes.length) {
                         info.msgCols = colsRes[0].values.map(c => c[1]);
-                        const cUpper = info.msgCols.map(c => c.toUpperCase());
-                        
-                        const findCol = (candidates) => {
-                            for (let cand of candidates) {
-                                let idx = cUpper.indexOf(cand.toUpperCase());
-                                if (idx !== -1) return info.msgCols[idx];
+
+                        const findCol = (patterns) => {
+                            for (let pat of patterns) {
+                                let match = info.msgCols.find(c => pat.test(c));
+                                if (match) return match;
                             }
-                            return info.msgCols.find(c => candidates.some(cand => c.toUpperCase().includes(cand.toUpperCase())));
+                            return null;
                         };
 
-                        info.textCol = findCol(['ZTEXT', 'TEXT', 'ZCONTENT', 'CONTENT', 'BODY', 'MESSAGE']);
-                        info.extraCol = findCol(['ZEXTRA', 'EXTRA', 'ZATTACHMENT', 'ATTACHMENT', 'ZMETADATA']);
-                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE', 'CREATED_AT']);
-                        info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'IS_OUT', 'FROM_ME']);
-                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'ROOM_ID', 'MID']);
-                        info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID', 'ZFROM', 'SENDER']);
-                        info.typeCol = findCol(['ZCONTENTTYPE', 'ZTYPE', 'CONTENT_TYPE', 'TYPE', 'ATTRIBUTES']);
+                        info.textCol = findCol([/^ZTEXT$/i, /TEXT/i, /CONTENT/i, /BODY/i, /MESSAGE/i]);
+                        info.extraCol = findCol([/^ZEXTRA$/i, /EXTRA/i, /ATTACHMENT/i]);
+                        info.timeCol = findCol([/^ZCREATEDTIME$/i, /CREATED_TIME/i, /TIMESTAMP/i, /TIME/i, /DATE/i]);
+                        info.isMeCol = findCol([/^ZISFROMME$/i, /IS_FROM_ME/i, /IS_ME/i, /ISME/i, /IS_OUT/i]);
+                        info.chatCol = findCol([/^ZCHAT$/i, /CHAT_ID/i, /ROOM_ID/i, /MID/i, /ZCHAT_ID/i]);
+                        info.senderCol = findCol([/^ZSENDER$/i, /SENDER_MID/i, /SENDER_ID/i, /ZFROM/i]);
+                        info.typeCol = findCol([/^ZCONTENTTYPE$/i, /CONTENT_TYPE/i, /TYPE/i]);
                     }
                 }
             } catch (e) { console.error("DB分析エラー:", e); }
@@ -412,7 +435,7 @@
                         const cols = colsRes[0].values.map(c => c[1]);
                         const res = db.exec(`SELECT * FROM ${info.userTable}`);
                         if (res.length && res[0].values) {
-                            const nameCandidates = ['ZCUSTOMNAME', 'ZNAME', 'ZDISPLAYNAME', 'ZNICKNAME', 'NAME', 'DISPLAY_NAME'];
+                            const nameCandidates = ['ZCUSTOMNAME', 'ZNAME', 'ZDISPLAYNAME', 'NAME', 'DISPLAY_NAME'];
                             const idCandidates = ['Z_PK', 'ROWID', 'ZMID', 'MID', 'ZUSERID', 'USER_ID', 'ID'];
 
                             res[0].values.forEach(row => {
@@ -635,7 +658,7 @@
                         <span class="msg-timestamp">${timeStr}</span>
                     </div>
                     <div class="bubble-container">
-                        <div class="bubble">${escapeHtml(mainText || '[メディア/システムメッセージ]')}</div>
+                        <div class="bubble">${escapeHtml(mainText || '[メディア/スタンプ/システムメッセージ]')}</div>
                     </div>
                 `;
                 chatView.appendChild(msgRow);

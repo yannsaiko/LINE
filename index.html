@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴 抽出・印刷ツール</title>
+    <title>LINE トーク履歴 抽出・印刷ツール (自動判定版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -135,6 +135,17 @@
         .me .bubble { background-color: #e2ffc7; border-bottom-right-radius: 4px; }
         .other .bubble { background-color: #ffffff; border: 1px solid #e0e0e0; border-bottom-left-radius: 4px; }
 
+        .info-box {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
         @media print {
             header, #sidebar, #drop-zone { display: none !important; }
             body { background: white; }
@@ -156,7 +167,7 @@
 
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
         <h3>📁 ここに「Line.sqlite」ファイルをドロップ</h3>
-        <p style="color: #666;">（フォルダごと・複数ファイルをまとめてドロップ可能）</p>
+        <p style="color: #666;">（複数選択・一括ドロップ可能）</p>
         <input type="file" id="file-input" accept=".sqlite,.db,application/vnd.sqlite3" multiple>
     </div>
 
@@ -177,7 +188,7 @@
 
     <script>
         let accounts = [];
-        let currentDb = null;
+        let currentAccount = null;
         let SQL = null;
 
         initSqlJs({
@@ -198,17 +209,13 @@
             if (e.target.files.length > 0) handleFiles(Array.from(e.target.files));
         });
 
-        // 複ふく数すうファイルの読よみ込こみ＆フィルター処しょ理り
         async function handleFiles(fileList) {
             accounts = [];
 
-            // -wal, -shm などのログ・一いち時じファイルを自じ動どう除じょ外がい
+            // -wal, -shm を除外じょがい
             const validFiles = fileList.filter(file => {
                 const name = file.name.toLowerCase();
-                if (name.endsWith('-wal') || name.endsWith('-shm') || name.endsWith('.wal') || name.endsWith('.shm')) {
-                    return false;
-                }
-                return true;
+                return !name.endsWith('-wal') && !name.endsWith('-shm') && !name.endsWith('.wal') && !name.endsWith('.shm');
             });
 
             for (let file of validFiles) {
@@ -217,18 +224,23 @@
                     const uInt8Array = new Uint8Array(arrayBuffer);
                     const dbInstance = new SQL.Database(uInt8Array);
 
-                    // データベースとして正せい常じょうにクエリが実じっ行こうできるかチェック（破は損そんファイルの排はい除じょ）
-                    dbInstance.exec("SELECT count(*) FROM sqlite_master");
-                    
-                    accounts.push({ fileName: file.name, db: dbInstance });
+                    // データベース構造こうぞうを解析かいせき
+                    const dbInfo = analyzeDatabase(dbInstance);
+
+                    accounts.push({
+                        fileName: file.name,
+                        db: dbInstance,
+                        info: dbInfo
+                    });
                 } catch (e) {
-                    // エラーが発はっ生せいしたファイルは画が面めんに何なんも表ひょう示じせずスキップ
-                    console.warn(`スキップされたファイル (${file.name}):`, e);
+                    console.warn(`解析かいせきエラー (${file.name}):`, e);
                 }
             }
 
-            // 正せい常じょうに読よみ込こめたファイルが1つもない場ば合あいは何なんもしない
-            if (accounts.length === 0) return;
+            if (accounts.length === 0) {
+                alert("読よみ込こみ可能かのうな SQLite データベースが見みつかりませんでした。");
+                return;
+            }
 
             dropZone.style.display = 'none';
             document.getElementById('app-container').style.display = 'flex';
@@ -247,10 +259,39 @@
             switchAccount(0);
         }
 
+        // データベース構造こうぞうの自動じどう判定はんてい
+        function analyzeDatabase(db) {
+            let info = { msgTable: null, textCol: null, timeCol: null, isMeCol: null, chatCol: null, chatTable: null };
+            
+            try {
+                const res = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
+                if (!res.length) return info;
+                const tables = res[0].values.map(r => r[0]);
+
+                // メッセージテーブル特定とくてい
+                info.msgTable = tables.find(t => t === 'ZMESSAGE' || t === 'chat_history' || t === 'messages') || tables.find(t => t.includes('MESSAGE'));
+                info.chatTable = tables.find(t => t === 'ZCHAT' || t === 'chats') || tables.find(t => t.includes('CHAT'));
+
+                if (info.msgTable) {
+                    const colsRes = db.exec(`PRAGMA table_info(${info.msgTable})`);
+                    if (colsRes.length) {
+                        const cols = colsRes[0].values.map(c => c[1]);
+                        
+                        info.textCol = cols.find(c => c === 'ZTEXT' || c === 'text' || c === 'body' || c === 'content') || cols.find(c => c.includes('TEXT'));
+                        info.timeCol = cols.find(c => c === 'ZCREATEDTIME' || c === 'created_time' || c === 'timestamp' || c === 'date') || cols.find(c => c.includes('TIME') || c.includes('DATE'));
+                        info.isMeCol = cols.find(c => c === 'ZISFROMME' || c === 'is_from_me' || c === 'from_me');
+                        info.chatCol = cols.find(c => c === 'ZCHAT' || c === 'chat_id' || c === 'room_id');
+                    }
+                }
+            } catch (e) {
+                console.error("解析かいせき例外れいがい:", e);
+            }
+            return info;
+        }
+
         function switchAccount(index) {
-            const acc = accounts[index];
-            if (!acc) return;
-            currentDb = acc.db;
+            currentAccount = accounts[index];
+            if (!currentAccount) return;
 
             document.getElementById('chat-view').innerHTML = `
                 <div style="text-align: center; color: #888; margin-top: 50px;">
@@ -278,41 +319,61 @@
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
         }
 
-        // トークルーム一いち覧らん取しゅ得とく（エラーは静しずかに無む視し）
         function loadChatRooms() {
             const chatList = document.getElementById('chat-list');
             chatList.innerHTML = '';
+            const { db, info } = currentAccount;
 
-            let query1 = `
-                SELECT 
-                    c.Z_PK,
-                    COALESCE(c.ZNAME, c.ZMID, 'トークルーム ' || c.Z_PK) as name,
-                    COUNT(m.Z_PK) as msg_count,
-                    MAX(m.ZCREATEDTIME) as last_time
-                FROM ZCHAT c
-                JOIN ZMESSAGE m ON m.ZCHAT = c.Z_PK
-                GROUP BY c.Z_PK
-                ORDER BY last_time DESC
-            `;
-
-            let query2 = `
-                SELECT 
-                    1 as Z_PK,
-                    '全ぜんメッセージ履り歴れき' as name,
-                    COUNT(Z_PK) as msg_count,
-                    MAX(ZCREATEDTIME) as last_time
-                FROM ZMESSAGE
-            `;
+            if (!info.msgTable || !info.textCol) {
+                chatList.innerHTML = '<div style="padding:15px; color:#666;">トークデータ構造こうぞうが見みつかりません</div>';
+                document.getElementById('chat-view').innerHTML = `
+                    <div class="info-box">
+                        <strong>⚠️ トークデータを読よみ込こみめませんでした</strong><br>
+                        考かんがえられる原因げんいん：<br>
+                        1. データベースが暗号あんごう化かされている（SQLCipher形式けいしき）<br>
+                        2. `Line.sqlite-wal` 側そばにすべてのデータが残ざんっており、`Line.sqlite` 本体ほんたいが空そらである<br>
+                        3. LINE以外いがいのSQLiteファイルを指定していしている
+                    </div>`;
+                return;
+            }
 
             try {
-                let res = null;
-                try {
-                    res = currentDb.exec(query1);
-                } catch (e1) {
-                    res = currentDb.exec(query2);
+                let query = "";
+                if (info.chatTable && info.chatCol) {
+                    query = `
+                        SELECT 
+                            c.Z_PK,
+                            COALESCE(c.ZNAME, 'トークルーム ' || c.Z_PK) as name,
+                            COUNT(m.ROWID) as msg_count,
+                            MAX(m.${info.timeCol || 'ROWID'}) as last_time
+                        FROM ${info.chatTable} c
+                        JOIN ${info.msgTable} m ON m.${info.chatCol} = c.Z_PK
+                        WHERE m.${info.textCol} IS NOT NULL AND m.${info.textCol} != ''
+                        GROUP BY c.Z_PK
+                        ORDER BY last_time DESC
+                    `;
+                } else {
+                    query = `
+                        SELECT 
+                            1 as Z_PK,
+                            '全ぜんメッセージ履歴りれき (一括いっかつ)' as name,
+                            COUNT(ROWID) as msg_count,
+                            MAX(${info.timeCol || 'ROWID'}) as last_time
+                        FROM ${info.msgTable}
+                        WHERE ${info.textCol} IS NOT NULL AND ${info.textCol} != ''
+                    `;
                 }
 
-                if (!res || !res.length || !res[0].values.length) return;
+                const res = db.exec(query);
+                if (!res.length || !res[0].values.length) {
+                    chatList.innerHTML = '<div style="padding:15px; color:#666;">表示ひょうじできるトークがありません</div>';
+                    document.getElementById('chat-view').innerHTML = `
+                        <div class="info-box">
+                            <strong>⚠️ メッセージ本文ほんぶんが見みつかりません</strong><br>
+                            `Line.sqlite` 内うちにトーク履歴りれきのテキストが存在そんざいしないか、`-wal` ファイルに未ひつじ保存ほぞんの状態じょうたいです。
+                        </div>`;
+                    return;
+                }
 
                 res[0].values.forEach(row => {
                     const [chatId, name, count, lastTime] = row;
@@ -334,53 +395,42 @@
                 });
 
             } catch (err) {
-                // エラー表ひょう示じは行おこなわない
+                console.error(err);
+                chatList.innerHTML = '<div style="padding:15px; color:red;">データ読よみ込こみエラー</div>';
             }
         }
 
-        // メッセージ取しゅ得とく（エラーは静しずかに無む視し）
         function loadMessages(chatId, chatName) {
             const chatView = document.getElementById('chat-view');
             chatView.innerHTML = `<div class="chat-header">${escapeHtml(chatName)} のトーク履り歴れき</div>`;
-
-            let q1 = `
-                SELECT 
-                    m.ZTEXT,
-                    m.ZCREATEDTIME,
-                    m.ZISFROMME,
-                    COALESCE(u.ZCUSTOMNAME, u.ZNAME, '相あい手て') as sender_name
-                FROM ZMESSAGE m
-                LEFT JOIN ZUSER u ON m.ZSENDER = u.Z_PK
-                WHERE m.ZCHAT = ${chatId}
-                ORDER BY m.ZCREATEDTIME ASC
-            `;
-
-            let q2 = `
-                SELECT 
-                    ZTEXT,
-                    ZCREATEDTIME,
-                    ZISFROMME,
-                    '相あい手て' as sender_name
-                FROM ZMESSAGE
-                ORDER BY ZCREATEDTIME ASC
-            `;
+            const { db, info } = currentAccount;
 
             try {
-                let res = null;
-                try {
-                    res = currentDb.exec(q1);
-                } catch (e) {
-                    res = currentDb.exec(q2);
+                let whereClause = (info.chatTable && info.chatCol) ? `WHERE ${info.chatCol} = ${chatId}` : "";
+                let timeOrder = info.timeCol ? `ORDER BY ${info.timeCol} ASC` : "";
+
+                let query = `
+                    SELECT 
+                        ${info.textCol},
+                        ${info.timeCol || "''"},
+                        ${info.isMeCol || '0'}
+                    FROM ${info.msgTable}
+                    ${whereClause}
+                    ${timeOrder}
+                `;
+
+                const res = db.exec(query);
+                if (!res.length || !res[0].values.length) {
+                    chatView.innerHTML += '<div style="color:#888;">メッセージがありません</div>';
+                    return;
                 }
 
-                if (!res || !res.length || !res[0].values.length) return;
-
                 res[0].values.forEach(row => {
-                    const [text, ts, isMe, senderName] = row;
-                    if (!text) return;
+                    const [text, ts, isMe] = row;
+                    if (!text || String(text).trim() === '') return;
 
                     const isMeBool = Boolean(isMe);
-                    const senderLabel = isMeBool ? '自じ分ぶん' : senderName;
+                    const senderLabel = isMeBool ? '自じ分ぶん' : '相手あいて';
                     const timeStr = formatTimestamp(ts);
 
                     const msgRow = document.createElement('div');
@@ -393,8 +443,9 @@
                     chatView.appendChild(msgRow);
                 });
 
-            } catch (err) {
-                // エラー表ひょう示じは行おこなわない
+            } catch (e) {
+                console.error(e);
+                chatView.innerHTML += '<div style="color:red;">メッセージ読よみ込こみエラーが発生はっせいしました</div>';
             }
         }
     </script>

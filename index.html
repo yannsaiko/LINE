@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク・全関連ファイル自動検索＆深層解析ツール (高速化・名前取得強化版)</title>
+    <title>LINE トーク・深層解析＆名前・本文抽出強化ツール</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -182,18 +182,26 @@
         .controls-bar {
             margin-top: 10px;
             display: flex;
-            gap: 10px;
+            gap: 8px;
+            flex-wrap: wrap;
         }
         .btn-sm {
-            padding: 5px 12px;
+            padding: 6px 12px;
             font-size: 11px;
             font-weight: bold;
             border-radius: 4px;
             border: 1px solid #ccc;
             background: #fff;
             cursor: pointer;
+            transition: background 0.15s;
         }
         .btn-sm:hover { background: #f0f0f0; }
+        .btn-toggle-reverse {
+            background-color: #fff3cd;
+            border-color: #ffeeba;
+            color: #856404;
+        }
+        .btn-toggle-reverse:hover { background-color: #ffe8a1; }
 
         .msg-row {
             display: flex;
@@ -247,7 +255,7 @@
         }
         .me .bubble { background-color: #85e249; border-top-right-radius: 2px; color: #000; }
         .other .bubble { background-color: #ffffff; border-top-left-radius: 2px; color: #000; }
-        .non-text-bubble { font-style: italic; color: #444; background-color: #eef2f5 !important; border: 1px dashed #bbb; }
+        .non-text-bubble { font-style: normal; color: #222; background-color: #f8f9fa !important; border: 1px solid #d0d7de; }
 
         .all-fields-container {
             margin-top: 6px;
@@ -297,7 +305,7 @@
 <body>
 
     <header>
-        <h1>LINE トーク・全関連ファイル自動検索＆深層解析ツール</h1>
+        <h1>LINE トーク・深層解析＆名前・本文抽出強化ツール</h1>
         <div class="header-actions">
             <button id="btn-reset" class="btn btn-reset" onclick="location.reload()">↺ 最初からやり直す</button>
             <button id="btn-print" class="btn btn-print" onclick="window.print()">🖨 印刷 (PDF保存)</button>
@@ -332,12 +340,10 @@
     <script>
         let accounts = [];
         let currentAccount = null;
-        let detectedRegistry = {
-            databases: [],
-            walShm: [],
-            media: [],
-            configs: []
-        };
+        let isMeReversed = false;
+        let activeChatParams = null;
+
+        let detectedRegistry = { databases: [], walShm: [], media: [], configs: [] };
         let SQL = null;
 
         const CONTENT_TYPE_MAP = {
@@ -345,15 +351,15 @@
             1: '🖼 画像',
             2: '🎥 動画',
             3: '🎙 音声メッセージ',
-            7: '📍 ロケーション (位置情報)',
+            7: '📍 位置情報',
             11: '🎨 スタンプ',
-            12: '🎴 連絡先 / カード',
-            13: '📓 ノート / アルバム通知',
-            14: '📞 グループ通話 / 通話履歴',
+            12: '🎴 連絡先カード',
+            13: '📓 ノート/アルバム通知',
+            14: '📞 通話履歴',
             15: '📎 ファイル添付',
-            16: '🔗 リッチメッセージ / リンク',
+            16: '🔗 リッチメッセージ/リンク',
             18: '✨ アニメーションスタンプ',
-            22: '👤 アバターメッセージ'
+            22: '👤 アバター'
         };
 
         initSqlJs().then(sqlEngine => {
@@ -371,16 +377,14 @@
             e.preventDefault();
             const items = e.dataTransfer.items;
             let filesToProcess = [];
-
             document.getElementById('status-msg').innerText = 'フォルダー構造を走査中...';
 
             if (items && items.length > 0) {
                 let entryPromises = [];
                 for (let i = 0; i < items.length; i++) {
                     const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
-                    if (entry) {
-                        entryPromises.push(traverseFileTree(entry));
-                    } else {
+                    if (entry) entryPromises.push(traverseFileTree(entry));
+                    else {
                         const file = items[i].getAsFile();
                         if (file) filesToProcess.push(file);
                     }
@@ -391,43 +395,28 @@
                 filesToProcess = Array.from(e.dataTransfer.files);
             }
 
-            if (filesToProcess.length > 0) {
-                await handleFiles(filesToProcess);
-            }
+            if (filesToProcess.length > 0) await handleFiles(filesToProcess);
         });
 
         fileInput.addEventListener('change', async (e) => {
-            if (e.target.files.length > 0) {
-                await handleFiles(Array.from(e.target.files));
-            }
+            if (e.target.files.length > 0) await handleFiles(Array.from(e.target.files));
         });
 
         async function traverseFileTree(topEntry) {
             const files = [];
             const queue = [topEntry];
-
             while (queue.length > 0) {
                 const entry = queue.shift();
                 if (entry.isFile) {
                     await new Promise((resolve) => {
-                        entry.file(
-                            file => { files.push(file); resolve(); },
-                            err => { console.warn('ファイル読み込み失敗:', err); resolve(); }
-                        );
+                        entry.file(f => { files.push(f); resolve(); }, () => resolve());
                     });
                 } else if (entry.isDirectory) {
                     const dirReader = entry.createReader();
                     let batch = [];
                     do {
-                        batch = await new Promise((resolve) => {
-                            dirReader.readEntries(
-                                entries => resolve(entries),
-                                err => { console.warn('ディレクトリ読み込み失敗:', err); resolve([]); }
-                            );
-                        });
-                        for (let child of batch) {
-                            queue.push(child);
-                        }
+                        batch = await new Promise(res => dirReader.readEntries(e => res(e), () => res([])));
+                        for (let child of batch) queue.push(child);
                     } while (batch.length > 0);
                 }
             }
@@ -442,18 +431,14 @@
                 const uInt8Array = new Uint8Array(arrayBuffer);
                 const headerStr = String.fromCharCode.apply(null, uInt8Array);
                 return headerStr.startsWith('SQLite format 3');
-            } catch (e) {
-                return false;
-            }
+            } catch (e) { return false; }
         }
 
         async function handleFiles(fileList) {
             if (!SQL) return;
             const statusEl = document.getElementById('status-msg');
-
             detectedRegistry = { databases: [], walShm: [], media: [], configs: [] };
             accounts = [];
-
             const totalFiles = fileList.length;
 
             for (let i = 0; i < totalFiles; i++) {
@@ -471,29 +456,27 @@
                     detectedRegistry.walShm.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
                 }
-
                 if (/\.(jpg|jpeg|png|gif|webp|mp4|mov|m4a|aud|aac|mp3|pdf|docx|zip|heic|db-journal)$/i.test(name)) {
                     detectedRegistry.media.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
                 }
-
                 if (/\.(plist|xml|json|pref|txt|log|bak)$/i.test(name) || name.includes('preference')) {
                     detectedRegistry.configs.push({ name: file.name, path, size: `${sizeMB} MB` });
                     continue;
                 }
 
-                const isSqlite = await isSqliteHeader(file);
-                if (isSqlite) {
+                if (await isSqliteHeader(file)) {
                     try {
                         statusEl.innerText = `データベース解析中: ${file.name} (${sizeMB} MB)...`;
                         await new Promise(r => setTimeout(r, 0));
-
                         const arrayBuffer = await file.arrayBuffer();
-                        const uInt8Array = new Uint8Array(arrayBuffer);
-                        const dbInstance = new SQL.Database(uInt8Array);
+                        const dbInstance = new SQL.Database(new Uint8Array(arrayBuffer));
                         const dbInfo = analyzeDatabase(dbInstance);
 
                         if (dbInfo.msgTable) {
+                            // 事前名前マップ（辞書）を構築
+                            buildNameDictionary(dbInstance, dbInfo);
+
                             accounts.push({
                                 fileName: file.name,
                                 filePath: path,
@@ -513,18 +496,13 @@
 
             if (accounts.length === 0) {
                 statusEl.innerHTML = `
-                    <span style="color:red; font-weight:bold; font-size:15px;">有効な LINE データベース (Line.sqlite等) が見つかりませんでした。</span><br><br>
+                    <span style="color:red; font-weight:bold; font-size:15px;">有効な LINE データベースが見つかりませんでした。</span><br><br>
                     <div style="font-size:12px; color:#444; text-align:left; background:#fff; padding:15px; border-radius:8px; border:1px solid #ffcccc; max-width:600px; margin:0 auto;">
                         <strong>🔍 検出結果内訳 (計 ${totalFiles} 件):</strong><br>
                         ・SQLite DBファイル: ${detectedRegistry.databases.length} 件<br>
                         ・WALキャッシュ: ${detectedRegistry.walShm.length} 件<br>
                         ・画像/動画/添付: ${detectedRegistry.media.length} 件<br>
-                        ・設定/その他: ${detectedRegistry.configs.length} 件<br><br>
-                        <strong>💡 対処法:</strong>
-                        <ul style="margin:5px 0 0 20px; padding:0;">
-                            <li><code>Line.sqlite</code> という名前のファイルが直接含まれるフォルダを選択しているか確認してください。</li>
-                            <li>iPhoneバックアップの場合、「暗号化」を有効にして保存したデータは解析できません。</li>
-                        </ul>
+                        ・設定/その他: ${detectedRegistry.configs.length} 件<br>
                     </div>`;
                 return;
             }
@@ -563,9 +541,8 @@
         function analyzeDatabase(db) {
             let info = { 
                 allTables: [],
-                msgTable: null, msgCols: [], textCol: null, timeCol: null, isMeCol: null, chatCol: null, 
-                senderCol: null, typeCol: null, chatTable: null, userTable: null,
-                userCols: [], chatCols: [], userPkCol: null, userMidCol: null, chatMidCol: null, chatNameCol: null
+                msgTable: null, msgCols: [], textCol: null, extraCol: null, timeCol: null, isMeCol: null, chatCol: null, senderCol: null, typeCol: null,
+                chatTable: null, userTable: null, userMap: {}, chatMap: {}
             };
 
             try {
@@ -585,26 +562,9 @@
                     return null;
                 };
 
-                info.msgTable = findTable(['ZMESSAGE', 'Z_MESSAGE', 'CHAT_HISTORY', 'MESSAGES', 'MESSAGE', 'CHAT_MESSAGES', 'TALK_HISTORY', 'MSG']);
-                info.chatTable = findTable(['ZCHAT', 'Z_CHAT', 'CHATS', 'CHAT_ROOMS', 'ROOMS', 'CHAT', 'TALK_ROOM']);
-                info.userTable = findTable(['ZUSER', 'Z_USER', 'ZCONTACT', 'Z_CONTACT', 'USERS', 'CONTACTS', 'FRIENDS', 'BUDDY', 'USER']);
-
-                if (!info.msgTable) {
-                    for (let table of info.allTables) {
-                        try {
-                            const cRes = db.exec(`PRAGMA table_info(${table})`);
-                            if (cRes.length && cRes[0].values) {
-                                const cols = cRes[0].values.map(c => c[1].toUpperCase());
-                                const hasText = cols.some(c => c.includes('TEXT') || c.includes('CONTENT') || c.includes('BODY') || c.includes('MESSAGE'));
-                                const hasTime = cols.some(c => c.includes('TIME') || c.includes('DATE') || c.includes('STAMP') || c.includes('CREATED'));
-                                if (hasText && hasTime) {
-                                    info.msgTable = table;
-                                    break;
-                                }
-                            }
-                        } catch(e) {}
-                    }
-                }
+                info.msgTable = findTable(['ZMESSAGE', 'Z_MESSAGE', 'CHAT_HISTORY', 'MESSAGES', 'MESSAGE', 'TALK_HISTORY']);
+                info.chatTable = findTable(['ZCHAT', 'Z_CHAT', 'CHATS', 'CHAT_ROOMS', 'ROOMS']);
+                info.userTable = findTable(['ZUSER', 'Z_USER', 'ZCONTACT', 'Z_CONTACT', 'USERS', 'CONTACTS', 'FRIENDS', 'BUDDY']);
 
                 if (info.msgTable) {
                     const colsRes = db.exec(`PRAGMA table_info(${info.msgTable})`);
@@ -617,65 +577,103 @@
                                 let idx = cUpper.indexOf(cand.toUpperCase());
                                 if (idx !== -1) return info.msgCols[idx];
                             }
-                            for (let cand of candidates) {
-                                let col = info.msgCols.find(c => c.toUpperCase().includes(cand.toUpperCase()));
-                                if (col) return col;
-                            }
-                            return null;
+                            return info.msgCols.find(c => candidates.some(cand => c.toUpperCase().includes(cand.toUpperCase())));
                         };
 
-                        info.textCol = findCol(['ZTEXT', 'TEXT', 'ZCONTENT', 'CONTENT', 'BODY', 'MESSAGE', 'ZBODY', 'MSG']);
-                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'CREATED_AT', 'TIME', 'DATE', 'ZTIME', 'ZDATE']);
-                        info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'ZFROMME', 'IS_OUT']);
-                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'CHATID', 'ROOM_ID', 'MID', 'CHAT_MID']);
-                        info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID', 'ZSENDERID', 'SENDER', 'ZFROM', 'FROM_MID', 'FROM_ID']);
-                        info.typeCol = findCol(['ZCONTENTTYPE', 'ZTYPE', 'CONTENT_TYPE', 'TYPE', 'ZMSGTYPE', 'MSG_TYPE']);
+                        info.textCol = findCol(['ZTEXT', 'TEXT', 'ZCONTENT', 'CONTENT', 'BODY', 'MESSAGE']);
+                        info.extraCol = findCol(['ZEXTRA', 'EXTRA', 'ZATTACHMENT', 'ATTACHMENT', 'ZMETADATA']);
+                        info.timeCol = findCol(['ZCREATEDTIME', 'CREATED_TIME', 'ZTIMESTAMP', 'TIMESTAMP', 'TIME', 'DATE']);
+                        info.isMeCol = findCol(['ZISFROMME', 'ZIS_FROM_ME', 'IS_ME', 'ISME', 'IS_OUT']);
+                        info.chatCol = findCol(['ZCHAT', 'CHAT_ID', 'ZCHAT_ID', 'ROOM_ID', 'MID']);
+                        info.senderCol = findCol(['ZSENDER', 'SENDER_MID', 'ZSENDER_MID', 'SENDER_ID', 'ZFROM']);
+                        info.typeCol = findCol(['ZCONTENTTYPE', 'ZTYPE', 'CONTENT_TYPE', 'TYPE']);
                     }
                 }
-
-                if (info.chatTable) {
-                    const cColsRes = db.exec(`PRAGMA table_info(${info.chatTable})`);
-                    if (cColsRes.length) {
-                        info.chatCols = cColsRes[0].values.map(c => c[1]);
-                        const cUpper = info.chatCols.map(c => c.toUpperCase());
-                        const findChatCol = (candidates) => {
-                            for (let cand of candidates) {
-                                let idx = cUpper.indexOf(cand.toUpperCase());
-                                if (idx !== -1) return info.chatCols[idx];
-                            }
-                            return info.chatCols.find(c => candidates.some(cand => c.toUpperCase().includes(cand.toUpperCase())));
-                        };
-                        info.chatNameCol = findChatCol(['ZNAME', 'ZCHATNAME', 'TITLE', 'CHAT_NAME', 'NAME']);
-                        info.chatMidCol = findChatCol(['ZMID', 'MID', 'ZCHATID', 'CHAT_ID', 'ID']);
-                    }
-                }
-
-                if (info.userTable) {
-                    const uColsRes = db.exec(`PRAGMA table_info(${info.userTable})`);
-                    if (uColsRes.length) {
-                        info.userCols = uColsRes[0].values.map(c => c[1]);
-                        const uUpper = info.userCols.map(c => c.toUpperCase());
-                        const findUserCol = (candidates) => {
-                            for (let cand of candidates) {
-                                let idx = uUpper.indexOf(cand.toUpperCase());
-                                if (idx !== -1) return info.userCols[idx];
-                            }
-                            return info.userCols.find(c => candidates.some(cand => c.toUpperCase().includes(cand.toUpperCase())));
-                        };
-                        info.userPkCol = findUserCol(['Z_PK', 'ROWID', '_ID', 'ID']);
-                        info.userMidCol = findUserCol(['ZMID', 'MID', 'ZUSERID', 'USER_ID']);
-                    }
-                }
-            } catch (e) {
-                console.error("DB分析エラー:", e);
-            }
+            } catch (e) { console.error("DB分析エラー:", e); }
             return info;
+        }
+
+        // 事前にデータベースから全ユーザー名・グループ名を抽出して辞書マップ化する処理
+        function buildNameDictionary(db, info) {
+            info.userMap = {};
+            info.chatMap = {};
+
+            // 1. ユーザーテーブルからの名前辞書構築
+            if (info.userTable) {
+                try {
+                    const colsRes = db.exec(`PRAGMA table_info(${info.userTable})`);
+                    if (colsRes.length) {
+                        const cols = colsRes[0].values.map(c => c[1]);
+                        const res = db.exec(`SELECT * FROM ${info.userTable}`);
+                        if (res.length && res[0].values) {
+                            const nameCandidates = ['ZCUSTOMNAME', 'ZNAME', 'ZDISPLAYNAME', 'ZNICKNAME', 'ZPHONETICNAME', 'ZADDRESSBOOKNAME', 'NAME', 'DISPLAY_NAME'];
+                            const idCandidates = ['Z_PK', 'ROWID', 'ZMID', 'MID', 'ZUSERID', 'USER_ID', 'ID'];
+
+                            res[0].values.forEach(row => {
+                                let foundName = '';
+                                for (let nc of nameCandidates) {
+                                    let idx = cols.findIndex(c => c.toUpperCase() === nc);
+                                    if (idx !== -1 && row[idx] && String(row[idx]).trim() !== '') {
+                                        foundName = String(row[idx]).trim();
+                                        break;
+                                    }
+                                }
+
+                                if (foundName) {
+                                    idCandidates.forEach(ic => {
+                                        let idx = cols.findIndex(c => c.toUpperCase() === ic);
+                                        if (idx !== -1 && row[idx] !== null && row[idx] !== undefined) {
+                                            const key = String(row[idx]).trim();
+                                            if (key) info.userMap[key] = foundName;
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }
+                } catch(e) { console.warn("ユーザー辞書作成警告:", e); }
+            }
+
+            // 2. チャット（トーク部屋）テーブルからの名前辞書構築
+            if (info.chatTable) {
+                try {
+                    const colsRes = db.exec(`PRAGMA table_info(${info.chatTable})`);
+                    if (colsRes.length) {
+                        const cols = colsRes[0].values.map(c => c[1]);
+                        const res = db.exec(`SELECT * FROM ${info.chatTable}`);
+                        if (res.length && res[0].values) {
+                            const nameCandidates = ['ZNAME', 'ZCHATNAME', 'TITLE', 'CHAT_NAME', 'NAME'];
+                            const idCandidates = ['Z_PK', 'ROWID', 'ZMID', 'MID', 'ZCHATID', 'CHAT_ID', 'ID'];
+
+                            res[0].values.forEach(row => {
+                                let foundName = '';
+                                for (let nc of nameCandidates) {
+                                    let idx = cols.findIndex(c => c.toUpperCase() === nc);
+                                    if (idx !== -1 && row[idx] && String(row[idx]).trim() !== '') {
+                                        foundName = String(row[idx]).trim();
+                                        break;
+                                    }
+                                }
+
+                                if (foundName) {
+                                    idCandidates.forEach(ic => {
+                                        let idx = cols.findIndex(c => c.toUpperCase() === ic);
+                                        if (idx !== -1 && row[idx] !== null && row[idx] !== undefined) {
+                                            const key = String(row[idx]).trim();
+                                            if (key) info.chatMap[key] = foundName;
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }
+                } catch(e) { console.warn("チャット辞書作成警告:", e); }
+            }
         }
 
         function switchAccount(index) {
             currentAccount = accounts[index];
             if (!currentAccount) return;
-
             document.getElementById('chat-view').innerHTML = `
                 <div style="text-align: center; color: #ffffff; margin-top: 50px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">
                     左側のリストからトークルームを選択してください
@@ -692,15 +690,10 @@
             if (numTs > 1000000000000) {
                 date = new Date(numTs);
             } else if (numTs > 100000000) {
-                if (numTs > 946684800) {
-                    date = new Date(numTs * 1000);
-                } else {
-                    const cocoaEpochMs = 978307200000;
-                    date = new Date(cocoaEpochMs + numTs * 1000);
-                }
+                if (numTs > 946684800) date = new Date(numTs * 1000);
+                else date = new Date(978307200000 + numTs * 1000);
             } else {
-                const cocoaEpochMs = 978307200000;
-                date = new Date(cocoaEpochMs + numTs * 1000);
+                date = new Date(978307200000 + numTs * 1000);
             }
 
             if (isNaN(date.getTime())) return '日時不明';
@@ -726,109 +719,28 @@
             const { db, info } = currentAccount;
 
             try {
-                let res = [];
                 const chatCol = info.chatCol || 'ZCHAT';
                 const timeCol = info.timeCol || 'ROWID';
 
-                // ユーザーテーブルが存在する場合、名前のカラム候補を拡張抽出
-                let userCandidatesSql = [];
-                if (info.userTable && info.userCols && info.userCols.length > 0) {
-                    const possibleCols = ['ZCUSTOMNAME', 'ZNAME', 'ZDISPLAYNAME', 'ZNICKNAME', 'ZPHONETICNAME', 'ZADDRESSBOOKNAME', 'NAME', 'DISPLAY_NAME'];
-                    possibleCols.forEach(colName => {
-                        const matched = info.userCols.find(c => c.toUpperCase() === colName);
-                        if (matched) userCandidatesSql.push(`NULLIF(u.${matched}, '')`);
-                    });
-                }
+                const query = `
+                    SELECT 
+                        m.${chatCol} as chat_id,
+                        COUNT(m.rowid) as msg_count,
+                        MAX(m.${timeCol}) as last_time
+                    FROM ${info.msgTable} m
+                    WHERE m.${chatCol} IS NOT NULL
+                    GROUP BY m.${chatCol}
+                    ORDER BY last_time DESC
+                `;
 
-                // チャットテーブル自体から取得可能な名前カラム候補
-                let chatCandidatesSql = [];
-                if (info.chatTable && info.chatCols && info.chatCols.length > 0) {
-                    const possibleCols = ['ZNAME', 'ZCHATNAME', 'TITLE', 'CHAT_NAME', 'NAME'];
-                    possibleCols.forEach(colName => {
-                        const matched = info.chatCols.find(c => c.toUpperCase() === colName);
-                        if (matched) chatCandidatesSql.push(`NULLIF(c.${matched}, '')`);
-                    });
-                }
-
-                const allNameCandidates = [...chatCandidatesSql, ...userCandidatesSql];
-                let nameExpr = "''";
-                if (allNameCandidates.length > 0) {
-                    nameExpr = `COALESCE(${allNameCandidates.join(', ')}, 'トーク相手 (ID: ' || c.rowid || ')')`;
-                } else {
-                    nameExpr = `'トーク相手 (ID: ' || c.rowid || ')'`;
-                }
-
-                if (info.chatTable) {
-                    let joinUserSql = "";
-                    if (info.userTable) {
-                        if (info.chatMidCol && info.userMidCol) {
-                            joinUserSql = `LEFT JOIN ${info.userTable} u ON c.${info.chatMidCol} = u.${info.userMidCol}`;
-                        } else if (info.userPkCol) {
-                            joinUserSql = `LEFT JOIN ${info.userTable} u ON c.rowid = u.${info.userPkCol}`;
-                        }
-                    }
-
-                    const pkCol = db.exec(`PRAGMA table_info(${info.chatTable})`)[0]?.values.find(v => v[1].toUpperCase() === 'Z_PK') ? 'Z_PK' : 'rowid';
-
-                    const joinQuery = `
-                        SELECT 
-                            c.${pkCol},
-                            ${nameExpr} as name,
-                            ${info.chatMidCol ? `c.${info.chatMidCol}` : "''"} as chat_mid,
-                            COUNT(m.rowid) as msg_count,
-                            MAX(m.${timeCol}) as last_time
-                        FROM ${info.chatTable} c
-                        ${joinUserSql}
-                        LEFT JOIN ${info.msgTable} m ON m.${chatCol} = c.${pkCol}
-                        GROUP BY c.${pkCol}
-                        HAVING msg_count > 0
-                        ORDER BY last_time DESC
-                    `;
-                    try { res = db.exec(joinQuery); } catch(e) { console.warn("トークリスト統合クエリ失敗、フォールバック試行:", e); }
-                }
-
-                if ((!res.length || !res[0].values.length) && info.chatTable) {
-                    try {
-                        const pkCol = db.exec(`PRAGMA table_info(${info.chatTable})`)[0]?.values.find(v => v[1].toUpperCase() === 'Z_PK') ? 'Z_PK' : 'rowid';
-                        const simpleChatQuery = `
-                            SELECT 
-                                c.${pkCol},
-                                COALESCE(NULLIF(c.${info.chatNameCol || 'ZNAME'}, ''), 'トーク相手 (ID: ' || c.${pkCol} || ')') as name,
-                                ${info.chatMidCol ? `c.${info.chatMidCol}` : "''"} as chat_mid,
-                                COUNT(m.rowid) as msg_count,
-                                MAX(m.${timeCol}) as last_time
-                            FROM ${info.chatTable} c
-                            LEFT JOIN ${info.msgTable} m ON m.${chatCol} = c.${pkCol}
-                            GROUP BY c.${pkCol}
-                            ORDER BY last_time DESC
-                        `;
-                        res = db.exec(simpleChatQuery);
-                    } catch(e) { console.warn("簡易トークリストクエリ失敗:", e); }
-                }
-
-                if (!res.length || !res[0].values.length) {
-                    try {
-                        let groupCol = info.chatCol ? `m.${info.chatCol}` : '1';
-                        const fallbackQuery = `
-                            SELECT 
-                                ${groupCol} as Z_PK,
-                                'トーク相手 (ID: ' || ${groupCol} || ')' as name,
-                                '' as chat_mid,
-                                COUNT(m.rowid) as msg_count,
-                                MAX(m.${info.timeCol || 'rowid'}) as last_time
-                            FROM ${info.msgTable} m
-                            GROUP BY ${groupCol}
-                            ORDER BY last_time DESC
-                        `;
-                        res = db.exec(fallbackQuery);
-                    } catch(e) { console.error("フォールバックメッセージグループ化失敗:", e); }
-                }
+                const res = db.exec(query);
 
                 if (!res.length || !res[0].values.length) {
                     chatList.innerHTML = '<div style="padding:15px; color:#999; font-size:12px;">メッセージデータが見つかりませんでした</div>';
                     return;
                 }
 
+                // 「全トーク履歴」を一括選択するボタン
                 const allItem = document.createElement('div');
                 allItem.className = 'chat-item all-chats-item';
                 allItem.innerHTML = `
@@ -846,15 +758,23 @@
                 chatList.appendChild(allItem);
 
                 res[0].values.forEach(row => {
-                    const [chatId, name, mid, count, lastTime] = row;
-                    const initial = (name && name.length > 0) ? name.charAt(0).toUpperCase() : '?';
+                    const [chatId, count, lastTime] = row;
+                    
+                    // 名前辞書マップ(chatMap, userMap)から超強力に名前を特定
+                    let resolvedName = info.chatMap[chatId] || info.userMap[chatId];
+
+                    if (!resolvedName) {
+                        resolvedName = `トーク相手 (${chatId})`;
+                    }
+
+                    const initial = resolvedName.charAt(0).toUpperCase();
 
                     const item = document.createElement('div');
                     item.className = 'chat-item';
                     item.innerHTML = `
                         <div class="chat-avatar">${escapeHtml(initial)}</div>
                         <div class="chat-info-body">
-                            <div class="chat-name">${escapeHtml(name)}</div>
+                            <div class="chat-name">${escapeHtml(resolvedName)}</div>
                             <div class="chat-meta">
                                 <span>${count} 件</span>
                                 <span>${formatTimestamp(lastTime)}</span>
@@ -864,7 +784,7 @@
                     item.onclick = () => {
                         document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
                         item.classList.add('active');
-                        loadMessages(chatId, name, mid, count);
+                        loadMessages(chatId, resolvedName, String(chatId), count);
                     };
                     chatList.appendChild(item);
                 });
@@ -882,12 +802,40 @@
 
         function toggleAllFields(show) {
             const elements = document.querySelectorAll('.all-fields-content');
-            elements.forEach(el => {
-                el.style.display = show ? 'block' : 'none';
-            });
+            elements.forEach(el => { el.style.display = show ? 'block' : 'none'; });
+        }
+
+        function toggleReverseSender() {
+            isMeReversed = !isMeReversed;
+            if (activeChatParams) loadMessages(...activeChatParams);
+        }
+
+        // メッセージ拡張属性（ZEXTRA等）から文字情報を深層抽出するヘルパー
+        function extractTextFromExtra(extraStr, contentType) {
+            if (!extraStr) return null;
+            try {
+                let parsed = typeof extraStr === 'object' ? extraStr : JSON.parse(extraStr);
+                let extracted = [];
+
+                if (parsed.text) extracted.push(parsed.text);
+                if (parsed.title) extracted.push(parsed.title);
+                if (parsed.stkpkgid || parsed.stkid) extracted.push(`[スタンプ: Pkg ${parsed.stkpkgid || ''} / ID ${parsed.stkid || ''}]`);
+                if (parsed.loc_name || parsed.address) extracted.push(`[位置情報: ${parsed.loc_name || ''} ${parsed.address || ''}]`);
+                if (parsed.filename || parsed.fn) extracted.push(`[添付ファイル: ${parsed.filename || parsed.fn}]`);
+                if (parsed.duration) extracted.push(`[通話時間/音声長: ${parsed.duration}秒]`);
+
+                if (extracted.length > 0) return extracted.join(' ');
+            } catch(e) {
+                // JSONでない場合は平文としてそのまま使用
+                if (typeof extraStr === 'string' && extraStr.length < 200 && !extraStr.startsWith('{')) {
+                    return extraStr;
+                }
+            }
+            return null;
         }
 
         function loadMessages(chatId, chatName, chatMid, totalMsgCount) {
+            activeChatParams = [chatId, chatName, chatMid, totalMsgCount];
             const chatView = document.getElementById('chat-view');
             const { db, info } = currentAccount;
 
@@ -898,11 +846,11 @@
                     <div>
                         <h2>👤 ${escapeHtml(chatName)}</h2>
                         <div class="chat-header-details">
-                            ${!isAllMode ? `<span>内部ID: <strong>${chatId}</strong></span>` : ''}
-                            ${chatMid ? `<span>識別MID: <strong>${escapeHtml(chatMid)}</strong></span>` : ''}
+                            ${!isAllMode ? `<span>ID/MID: <strong>${escapeHtml(chatMid)}</strong></span>` : ''}
                             ${!isAllMode ? `<span>総件数: <strong>${totalMsgCount}</strong> 件</span>` : ''}
                         </div>
                         <div class="controls-bar">
+                            <button class="btn-sm btn-toggle-reverse" onclick="toggleReverseSender()">⇄ 自分と相手の左右表示を反転 ${isMeReversed ? '(反転中)' : ''}</button>
                             <button class="btn-sm" onclick="toggleAllFields(true)">🔓 全生データを一括展開</button>
                             <button class="btn-sm" onclick="toggleAllFields(false)">🔒 全生データを折りたたむ</button>
                         </div>
@@ -910,7 +858,6 @@
                 </div>
             `;
 
-            let res = [];
             let whereClause = "";
             if (!isAllMode && info.chatCol) {
                 const safeChatId = String(chatId).replace(/'/g, "''");
@@ -918,52 +865,14 @@
             }
 
             const timeOrder = info.timeCol ? `ORDER BY m.${info.timeCol} ASC` : "";
+            const fullQuery = `SELECT m.* FROM ${info.msgTable} m ${whereClause} ${timeOrder}`;
 
-            let selectSenderSql = "'' as JOINED_SENDER_NAME";
-            let joinSql = "";
-
-            if (info.userTable && info.senderCol && info.userCols && info.userCols.length > 0) {
-                const possibleUserCols = ['ZCUSTOMNAME', 'ZNAME', 'ZDISPLAYNAME', 'ZNICKNAME', 'ZPHONETICNAME', 'ZADDRESSBOOKNAME', 'NAME', 'DISPLAY_NAME'];
-                const existingCols = possibleUserCols.filter(colName => info.userCols.some(c => c.toUpperCase() === colName));
-
-                if (existingCols.length > 0) {
-                    const userColsSql = existingCols.map(c => `NULLIF(u.${c}, '')`).join(', ');
-                    selectSenderSql = `COALESCE(${userColsSql}) as JOINED_SENDER_NAME`;
-                }
-
-                const joinTargetCol = info.userMidCol || info.userPkCol;
-                if (joinTargetCol) {
-                    joinSql = `LEFT JOIN ${info.userTable} u ON m.${info.senderCol} = u.${joinTargetCol}`;
-                }
-            }
-
-            const fullQuery = `
-                SELECT 
-                    m.*,
-                    ${selectSenderSql}
-                FROM ${info.msgTable} m
-                ${joinSql}
-                ${whereClause}
-                ${timeOrder}
-            `;
-
+            let res = [];
             try {
                 res = db.exec(fullQuery);
             } catch (e) {
-                console.warn("ユーザーJOIN付きメッセージ抽出エラー、単体クエリ試行:", e);
-                try {
-                    const simpleMsgQuery = `
-                        SELECT m.*, '' as JOINED_SENDER_NAME
-                        FROM ${info.msgTable} m
-                        ${whereClause}
-                        ${timeOrder}
-                    `;
-                    res = db.exec(simpleMsgQuery);
-                } catch (e2) {
-                    console.error("メッセージ抽出エラー:", e2);
-                    chatView.innerHTML += `<div style="color:white; background:red; padding:10px; border-radius:5px; margin-top:20px;">抽出エラー: ${escapeHtml(e2.message)}</div>`;
-                    return;
-                }
+                chatView.innerHTML += `<div style="color:white; background:red; padding:10px; border-radius:5px; margin-top:20px;">抽出エラー: ${escapeHtml(e.message)}</div>`;
+                return;
             }
 
             if (!res.length || !res[0].values.length) {
@@ -973,51 +882,64 @@
 
             const columns = res[0].columns;
             const textIdx = columns.indexOf(info.textCol);
+            const extraIdx = columns.indexOf(info.extraCol);
             const timeIdx = columns.indexOf(info.timeCol);
             const isMeIdx = columns.indexOf(info.isMeCol);
             const senderIdx = columns.indexOf(info.senderCol);
             const typeIdx = columns.indexOf(info.typeCol);
-            const joinedSenderIdx = columns.indexOf('JOINED_SENDER_NAME');
 
             res[0].values.forEach((row, rowIdx) => {
-                const text = textIdx !== -1 ? row[textIdx] : '';
+                const mainText = textIdx !== -1 ? row[textIdx] : '';
+                const extraData = extraIdx !== -1 ? row[extraIdx] : null;
                 const ts = timeIdx !== -1 ? row[timeIdx] : 0;
-                const isMeVal = isMeIdx !== -1 ? row[isMeIdx] : 0;
+                const isMeVal = isMeIdx !== -1 ? row[isMeIdx] : null;
                 const senderId = senderIdx !== -1 ? row[senderIdx] : '';
                 const contentType = typeIdx !== -1 ? row[typeIdx] : 0;
-                const senderName = joinedSenderIdx !== -1 ? row[joinedSenderIdx] : '';
 
+                // 自分/相手のロジック判定
                 let isMeBool = false;
-                if (isMeIdx !== -1) {
-                    isMeBool = (isMeVal === 1 || isMeVal === '1' || isMeVal === true || isMeVal === 'true');
-                } else {
-                    isMeBool = (!senderId || senderId === '0' || senderId === 0);
+                if (isMeVal !== null && isMeVal !== undefined && isMeVal !== '') {
+                    if (isMeVal === 1 || isMeVal === '1' || isMeVal === true || isMeVal === 'true') isMeBool = true;
+                } else if (senderId !== null && senderId !== undefined) {
+                    const s = String(senderId).trim().toLowerCase();
+                    if (s === '' || s === '0' || s === 'null' || s === 'undefined' || s === 'me' || s === 'self') isMeBool = true;
                 }
 
+                if (isMeReversed) isMeBool = !isMeBool;
+
+                // 送信者名の事前辞書逆引き検索
                 let displayName = '自分';
                 if (!isMeBool) {
-                    if (senderName && String(senderName).trim() !== '') {
-                        displayName = senderName;
-                    } else if (chatName && !chatName.startsWith('トーク相手 (ID:') && !chatName.startsWith('すべてのトーク履歴')) {
+                    if (senderId && info.userMap[senderId]) {
+                        displayName = info.userMap[senderId];
+                    } else if (chatName && !chatName.startsWith('トーク相手') && !chatName.startsWith('すべてのトーク履歴')) {
                         displayName = chatName;
                     } else if (senderId) {
-                        displayName = `相手 (ID:${senderId})`;
+                        displayName = info.userMap[senderId] || `相手 (${senderId})`;
                     } else {
                         displayName = '相手';
                     }
                 }
 
-                const timeStr = formatTimestamp(ts);
+                // 本文テキストの完全抽出（ZTEXTが空ならZEXTRAから補完）
                 const typeLabel = CONTENT_TYPE_MAP[contentType] || `タイプ: ${contentType}`;
-                const hasText = text && String(text).trim() !== '';
-                const displayText = hasText ? escapeHtml(text) : `[${typeLabel}]`;
+                let extractedText = mainText;
+
+                if (!extractedText || String(extractedText).trim() === '') {
+                    const extraText = extractTextFromExtra(extraData, contentType);
+                    if (extraText) {
+                        extractedText = `${extraText}`;
+                    } else {
+                        extractedText = `[${typeLabel}]`;
+                    }
+                }
+
+                const timeStr = formatTimestamp(ts);
+                const hasText = mainText && String(mainText).trim() !== '';
 
                 let allFieldsObject = {};
-                columns.forEach((col, idx) => {
-                    allFieldsObject[col] = row[idx];
-                });
+                columns.forEach((col, idx) => { allFieldsObject[col] = row[idx]; });
                 const allFieldsJsonStr = JSON.stringify(allFieldsObject, null, 2);
-
                 const toggleId = `fields-${rowIdx}`;
 
                 const msgRow = document.createElement('div');
@@ -1028,7 +950,7 @@
                         <span class="msg-timestamp">${timeStr}</span>
                     </div>
                     <div class="bubble-container">
-                        <div class="bubble ${hasText ? '' : 'non-text-bubble'}">${displayText}</div>
+                        <div class="bubble ${hasText ? '' : 'non-text-bubble'}">${escapeHtml(extractedText)}</div>
                         <div class="all-fields-container">
                             <button class="all-fields-toggle" onclick="toggleFields('${toggleId}')">🔍 メッセージの全属性・生データを表示</button>
                             <div id="${toggleId}" class="all-fields-content">${escapeHtml(allFieldsJsonStr)}</div>

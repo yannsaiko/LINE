@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴 抽出・表示ツール</title>
+    <title>LINE トーク履歴 抽出・印刷ツール</title>
     <!-- sql.js (WebAssembly版ばんSQLite) CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     <style>
@@ -78,7 +78,7 @@
         }
         .chat-item:hover { background-color: #f8f9fa; }
         .chat-item.active { background-color: #e6f9e6; font-weight: bold; }
-        .chat-name { font-size: 15px; margin-bottom: 4px; color: #111; }
+        .chat-name { font-size: 15px; margin-bottom: 4px; color: #111; font-weight: 500; }
         .chat-meta { font-size: 12px; color: #888; display: flex; justify-content: space-between; }
 
         /* 右みぎ側がわ：トーク内ない容よう表ひょう示じエリア */
@@ -148,14 +148,15 @@
 
     <header>
         <h1>LINE トーク履歴 抽出・印刷ツール</h1>
-        <button id="btn-print" class="print-btn" onclick="window.print()">🖨 このトークを印刷 / PDF化</button>
+        <button id="btn-print" class="print-btn" onclick="window.print()">🖨 表示中のトークを印刷 (PDF)</button>
     </header>
 
     <!-- ファイル選せん択たく/ドロップエリア -->
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <h3>📁 ここに Line.sqlite ファイル、または LINE.app フォルダをドロップ</h3>
-        <p>（クリックしてファイルを選択することもできます）</p>
-        <input type="file" id="file-input" multiple webkitdirectory>
+        <h3>📁 ここに「Line.sqlite」ファイルをドロップしてください</h3>
+        <p style="color: #666;">（クリックしてファイルを選択することもできます）</p>
+        <!-- フォルダ指し定ていを外はずし、単たん一いつファイルを受うけ付つけるように変へん更こう -->
+        <input type="file" id="file-input" accept=".sqlite,.db,application/vnd.sqlite3">
     </div>
 
     <!-- アプリ本ほん体たい（トークルーム選せん択たく＆メッセージ表ひょう示じ） -->
@@ -163,7 +164,7 @@
         <div id="sidebar"></div>
         <div id="chat-view">
             <div style="text-align: center; color: #888; margin-top: 50px;">
-                左側のリストからトークルームを選択してください
+                左側のリストから抽出したいトークルームを選択してください
             </div>
         </div>
     </div>
@@ -180,39 +181,48 @@
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
 
+        // ドラッグ＆ドロップイベントの設せっ定てい
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('hover'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('hover'));
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('hover');
-            handleFiles(e.dataTransfer.files);
+            if (e.dataTransfer.files.length > 0) {
+                handleFile(e.dataTransfer.files[0]);
+            }
         });
-        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+        
+        // クリックでのファイル選せん択たくイベントの設せっ定てい
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
 
-        async function handleFiles(files) {
-            let targetFile = null;
-
-            for (let f of files) {
-                if (f.name === 'Line.sqlite' || f.name.endsWith('.sqlite') || f.name.endsWith('.db')) {
-                    targetFile = f;
-                    break;
-                }
+        // 単たん一いつファイル（Line.sqlite）を処しょ理りする関かん数すう
+        async function handleFile(file) {
+            // ファイル拡かく張ちょう子しの簡かん易いチェック
+            if (!file.name.endsWith('.sqlite') && !file.name.endsWith('.db') && !file.name.includes('Line')) {
+                const proceed = confirm(`選せん択たくされたファイル「${file.name}」はLINEのデータベースではない可か能のう性せいがあります。\n処しょ理りを続ぞっ行こうしますか？`);
+                if (!proceed) return;
             }
 
-            if (!targetFile) {
-                alert('LINEのデータベースファイル (.sqlite) が見みつかりませんでした。');
-                return;
+            try {
+                // ファイルをメモリに読よみ込こんでSQLiteとしてパース
+                const arrayBuffer = await file.arrayBuffer();
+                const uInt8Array = new Uint8Array(arrayBuffer);
+                db = new SQL.Database(uInt8Array);
+
+                // UIの切きり替かえ
+                dropZone.style.display = 'none';
+                document.getElementById('app-container').style.display = 'flex';
+                document.getElementById('btn-print').style.display = 'block';
+
+                loadChatRooms();
+            } catch (error) {
+                alert('データベースの読よみ込こみに失しっ敗ぱいしました。正ただしい Line.sqlite ファイルか確かく認にんしてください。');
+                console.error(error);
             }
-
-            const arrayBuffer = await targetFile.arrayBuffer();
-            const uInt8Array = new Uint8Array(arrayBuffer);
-            db = new SQL.Database(uInt8Array);
-
-            dropZone.style.display = 'none';
-            document.getElementById('app-container').style.display = 'flex';
-            document.getElementById('btn-print').style.display = 'block';
-
-            loadChatRooms();
         }
 
         // 日にち時じ変へん換かん関かん数すう (iOS CoreData / Unix Timestamp)
@@ -229,7 +239,7 @@
             });
         }
 
-        // メッセージ種しゅ別べつ変へん換かん
+        // メッセージ種しゅ別べつ変へん換かん（スタンプや画が像ぞうなどをバッジ表ひょう示じ）
         function getMessageText(text, contentType) {
             if (text) return escapeHtml(text);
             switch (contentType) {
@@ -253,7 +263,7 @@
             sidebar.innerHTML = '';
 
             try {
-                // トークルーム一いち覧らんクエリ
+                // トークルーム一いち覧らんを取しゅ得とくするSQLクエリ
                 const res = db.exec(`
                     SELECT 
                         c.Z_PK,
@@ -271,6 +281,7 @@
                     return;
                 }
 
+                // リストを構こう築ちく
                 res[0].values.forEach(row => {
                     const [chatId, name, count, lastTime] = row;
                     const item = document.createElement('div');
@@ -282,6 +293,7 @@
                             <span>${formatTimestamp(lastTime)}</span>
                         </div>
                     `;
+                    // クリック時じに右みぎ側がわペインにメッセージを表ひょう示じ
                     item.onclick = () => {
                         document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
                         item.classList.add('active');
@@ -292,16 +304,17 @@
 
             } catch (e) {
                 console.error(e);
-                sidebar.innerHTML = '<div style="padding:15px; color:red;">データベース読よみ込こみエラー</div>';
+                sidebar.innerHTML = '<div style="padding:15px; color:red;">データベース読よみ込こみエラー: 正ただしい形けい式しきのファイルではない可か能のう性せいがあります</div>';
             }
         }
 
-        // 選せん択たくされたトークのメッセージ履り歴れきをロード
+        // 選せん択たくされたトークルームのメッセージ履り歴れきを表ひょう示じ
         function loadMessages(chatId, chatName) {
             const chatView = document.getElementById('chat-view');
             chatView.innerHTML = `<div class="chat-header">${escapeHtml(String(chatName))} のトーク履り歴れき</div>`;
 
             try {
+                // メッセージ履り歴れきを取しゅ得とくするSQLクエリ
                 const query = `
                     SELECT 
                         m.ZTEXT,
@@ -316,8 +329,12 @@
                 `;
 
                 const res = db.exec(query);
-                if (!res.length) return;
+                if (!res.length) {
+                    chatView.innerHTML += '<div style="color:#888;">メッセージがありません</div>';
+                    return;
+                }
 
+                // メッセージをDOMに追つい加か
                 res[0].values.forEach(row => {
                     const [text, ts, isMe, contentType, senderName] = row;
                     const isMeBool = Boolean(isMe);
@@ -337,6 +354,7 @@
 
             } catch (e) {
                 console.error(e);
+                chatView.innerHTML += '<div style="color:red;">メッセージの読よみ込こみに失しっ敗ぱいしました</div>';
             }
         }
     </script>

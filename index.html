@@ -9,7 +9,7 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif; height: 100vh; height: -webkit-fill-available; display: flex; flex-direction: column; background: #f5f5f5; color: #333; overflow: hidden; }
         html { height: -webkit-fill-available; }
         
-        header { background: #06c755; color: white; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex-shrink: 0; z-index: 10; }
+        header { background: #06c755; color: white; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex-shrink: 0; z-index: 100; min-height: 50px; }
         header h1 { font-size: 16px; font-weight: bold; }
         .header-btns { display: flex; gap: 8px; }
         .btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
@@ -21,7 +21,7 @@
         .file-inputs label { background: #06c755; color: white; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; transition: background 0.2s; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; flex: 1; min-width: 140px; }
         .file-inputs label:active { background: #05b34c; }
         .file-inputs input { display: none; }
-        .ios-note { margin-top: 15px; font-size: 12px; color: #444; line-height: 1.5; background: #f0fdf4; padding: 10px 14px; border-radius: 8px; border: 1px solid #bbf7d0; max-width: 500px; text-align: left; }
+        .ios-note { margin-top: 15px; font-size: 12px; color: #333; line-height: 1.5; background: #f0fdf4; padding: 10px 14px; border-radius: 8px; border: 1px solid #bbf7d0; max-width: 500px; text-align: left; }
         
         /* 進捗プログレスバーモーダル */
         #progress-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
@@ -57,7 +57,7 @@
         
         /* メインコンテンツ */
         #main-content { flex: 1; display: flex; flex-direction: column; background: #abc1ee; position: relative; z-index: 1; }
-        #chat-header { background: #ffffff; padding: 8px 12px; border-bottom: 1px solid #e0e0e0; display: none; align-items: center; justify-content: space-between; box-shadow: 0 1px 2px rgba(0,0,0,0.05); gap: 8px; flex-shrink: 0; }
+        #chat-header { background: #ffffff; padding: 8px 12px; border-bottom: 1px solid #e0e0e0; display: none; align-items: center; justify-content: space-between; box-shadow: 0 1px 2px rgba(0,0,0,0.05); gap: 8px; flex-shrink: 0; z-index: 10; }
         
         .btn-back { display: none; background: transparent; border: none; font-size: 20px; font-weight: bold; color: #06c755; cursor: pointer; padding: 4px 8px 4px 0; align-items: center; }
         
@@ -66,16 +66,30 @@
         #chat-header-info { font-size: 11px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .chat-header-actions { display: flex; align-items: center; gap: 6px; }
         
+        /* 検索ナビゲーション機能バー */
+        .msg-search-box { display: flex; align-items: center; background: #f0f4f8; border-radius: 6px; border: 1px solid #cbd5e0; padding: 2px 4px; }
+        .msg-search-box input { border: none; background: transparent; outline: none; font-size: 12px; width: 90px; padding: 4px; }
+        .search-count { font-size: 10px; color: #666; margin: 0 4px; white-space: nowrap; }
+        .btn-nav-search { border: none; background: #cbd5e0; color: #333; font-size: 10px; border-radius: 3px; padding: 2px 5px; cursor: pointer; margin-left: 2px; }
+        .btn-nav-search:active { background: #a0aec0; }
+
         #chat-view { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; }
         #empty-state { margin: auto; color: #4a5568; text-align: center; font-size: 14px; font-weight: bold; background: rgba(255,255,255,0.85); padding: 20px; border-radius: 12px; max-width: 80%; }
         
-        #messages-container { display: flex; flex-direction: column; gap: 10px; }
+        #messages-container { display: flex; flex-direction: column; gap: 12px; }
         .date-divider { text-align: center; margin: 8px 0; font-size: 11px; color: #4a5568; background: rgba(255,255,255,0.75); padding: 3px 12px; border-radius: 12px; align-self: center; font-weight: bold; }
         
-        .msg-row { display: flex; gap: 8px; max-width: 82%; }
+        .msg-row { display: flex; gap: 8px; max-width: 85%; transition: background-color 0.5s; padding: 4px 6px; border-radius: 8px; }
         .msg-row.other { align-self: flex-start; }
         .msg-row.me { align-self: flex-end; flex-direction: row-reverse; }
         
+        /* 検索ジャンプ用ハイライトアニメーション */
+        .msg-row.highlight-target { animation: flashHighlight 2s ease-out; }
+        @keyframes flashHighlight {
+            0% { background-color: #fef08a; transform: scale(1.02); }
+            100% { background-color: transparent; transform: scale(1); }
+        }
+
         .msg-avatar { width: 32px; height: 32px; border-radius: 50%; background: #7d8b99; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; flex-shrink: 0; }
         .msg-content { display: flex; flex-direction: column; min-width: 0; width: 100%; }
         
@@ -83,21 +97,20 @@
         .msg-sender-name { font-size: 11px; color: #444; font-weight: 500; }
         .msg-row.me .msg-header-line { flex-direction: row-reverse; }
         
-        /* 🙈 モザイク & ❌ 非表示用ツールボタン */
         .msg-tools { display: flex; gap: 4px; opacity: 0.3; transition: opacity 0.2s; }
         .msg-row:hover .msg-tools, .msg-tools:active { opacity: 1; }
         .btn-msg-tool { background: rgba(0,0,0,0.06); border: none; border-radius: 4px; padding: 2px 5px; font-size: 10px; cursor: pointer; color: #444; font-weight: 500; }
         .btn-msg-tool:hover { background: rgba(0,0,0,0.15); }
         .btn-msg-tool.active-mosaic { background: #ed8936; color: white; }
 
-        .msg-body-wrap { display: flex; align-items: flex-end; gap: 4px; }
-        .msg-row.me .msg-body-wrap { flex-direction: row-reverse; }
-        
+        .msg-body-wrap { display: flex; flex-direction: column; }
         .bubble { background: white; padding: 8px 12px; border-radius: 14px; font-size: 14px; line-height: 1.4; word-break: break-word; white-space: pre-wrap; box-shadow: 0 1px 2px rgba(0,0,0,0.1); transition: filter 0.2s; }
         .msg-row.me .bubble { background: #85e249; color: #000; }
-        .msg-time { font-size: 10px; color: rgba(0,0,0,0.6); flex-shrink: 0; }
         
-        /* モザイク・非表示適用クラス */
+        /* 📅 トーク下の「日付・時間」表示用クラス */
+        .msg-datetime-sub { font-size: 10px; color: rgba(0,0,0,0.55); margin-top: 3px; font-weight: 500; text-align: left; }
+        .msg-row.me .msg-datetime-sub { text-align: right; }
+
         .bubble.is-mosaic { filter: blur(6px) !important; -webkit-filter: blur(6px) !important; user-select: none; opacity: 0.7; }
         .msg-row.is-hidden-msg { display: none !important; }
 
@@ -115,37 +128,45 @@
         .btn-cancel { background: #e2e8f0; color: #4a5568; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
         .btn-exec-print { background: #06c755; color: white; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
 
-        /* 公式バックアップ形式用スタイル設定 */
+        /* 公式バックアップ風（テキスト形式）スタイル設定 */
         #backup-header-text { display: none; background: #ffffff; padding: 12px 0; border-bottom: 1px solid #ccc; font-family: monospace; font-size: 13px; line-height: 1.5; white-space: pre-wrap; margin-bottom: 10px; color: #000; }
 
         body.backup-format #main-content { background: #ffffff !important; }
-        body.backup-format #messages-container { gap: 6px !important; }
-        body.backup-format .msg-row, body.backup-format .msg-row.me, body.backup-format .msg-row.other { max-width: 100% !important; width: 100% !important; align-self: flex-start !important; flex-direction: row !important; justify-content: flex-start !important; }
+        body.backup-format #messages-container { gap: 10px !important; }
+        body.backup-format .msg-row, body.backup-format .msg-row.me, body.backup-format .msg-row.other { max-width: 100% !important; width: 100% !important; align-self: flex-start !important; flex-direction: column !important; }
         body.backup-format .msg-avatar { display: none !important; }
-        body.backup-format .msg-content { width: 100% !important; flex-direction: row !important; flex-wrap: wrap !important; align-items: baseline !important; gap: 6px !important; text-align: left !important; }
-        body.backup-format .msg-header-line { display: inline-flex !important; margin: 0 !important; }
-        body.backup-format .msg-sender-name, body.backup-format .msg-row.me .msg-sender-name { display: inline-block !important; margin: 0 !important; font-weight: bold !important; text-align: left !important; color: #000 !important; }
-        body.backup-format .msg-body-wrap, body.backup-format .msg-row.me .msg-body-wrap { flex-direction: row !important; align-items: baseline !important; gap: 6px !important; flex: 1 !important; }
-        body.backup-format .bubble { background: transparent !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; display: inline !important; word-break: break-all; color: #000 !important; }
-        body.backup-format .msg-time { display: inline-block !important; font-size: 12px !important; color: #555 !important; min-width: auto !important; text-align: left !important; }
-        body.backup-format .date-divider { background: transparent !important; text-align: left !important; padding: 8px 0 4px 0 !important; border-bottom: 1px dashed #ccc !important; font-weight: bold; border-radius: 0 !important; width: 100%; color: #000 !important; }
+        body.backup-format .msg-content { width: 100% !important; flex-direction: column !important; align-items: flex-start !important; text-align: left !important; }
+        body.backup-format .msg-header-line { display: flex !important; margin-bottom: 2px !important; }
+        body.backup-format .msg-sender-name { font-weight: bold !important; text-align: left !important; color: #000 !important; font-size: 13px !important; }
+        body.backup-format .bubble { background: transparent !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; display: block !important; word-break: break-all; color: #000 !important; font-size: 13px !important; }
+        
+        /* 📄 テキスト印刷時の「左寄せ」日付・時刻設定 */
+        body.backup-format .msg-datetime-sub {
+            text-align: left !important;
+            font-size: 11px !important;
+            color: #555 !important;
+            display: block !important;
+            margin-top: 2px !important;
+            margin-bottom: 4px !important;
+            width: 100% !important;
+            border-bottom: 1px dashed #e2e8f0;
+            padding-bottom: 4px;
+        }
 
-        /* 📱 スマホ（iPhone等）用レスポンシブスタイル */
         @media (max-width: 768px) {
             #sidebar { width: 100%; height: 100%; position: absolute; left: 0; top: 0; z-index: 5; }
             #main-content { width: 100%; height: 100%; position: absolute; left: 0; top: 0; z-index: 10; display: none; }
             body.show-chat #sidebar { display: none !important; }
             body.show-chat #main-content { display: flex !important; }
-            
             .btn-back { display: inline-flex; }
-            .msg-search-wrap { width: 90px !important; }
-            .msg-row { max-width: 88%; }
+            .msg-search-box input { width: 65px; }
+            .msg-row { max-width: 90%; }
             #drop-zone { margin: 10px; padding: 15px; }
         }
 
         /* 🖨️ 印刷オプション動的適用スタイル */
         body.hide-date .date-divider { display: none !important; }
-        body.hide-time .msg-time { display: none !important; }
+        body.hide-time .msg-datetime-sub { display: none !important; }
         body.hide-sender .msg-sender-name, body.hide-sender .msg-avatar { display: none !important; }
         body.hide-me .msg-row.me { display: none !important; }
         body.hide-other .msg-row.other { display: none !important; }
@@ -157,15 +178,12 @@
         body.font-small { font-size: 12px; }
         body.font-small .bubble { font-size: 12px; }
 
-        /* 印刷用ページ番号要素 */
         #print-page-footer { display: none; }
 
-        /* 🖨️ 印刷専用CSS設定（URLなどの余白表示防止 & ページ番号出力） */
+        /* 🖨️ 印刷専用CSS設定 */
         @media print {
-            @page {
-                margin: 10mm; /* ブラウザ標準のURL・日時フッター非表示 */
-            }
-            header, #sidebar, #status-bar, .file-inputs, .add-files-bar, #msg-search, .btn-print, #btn-reset, .btn-back, #print-modal, #progress-overlay, .msg-tools, .btn-small {
+            @page { margin: 10mm; }
+            header, #sidebar, #status-bar, .file-inputs, .add-files-bar, .msg-search-box, .btn-print, #btn-reset, .btn-back, #print-modal, #progress-overlay, .msg-tools, .btn-small {
                 display: none !important;
             }
             body, #app-container, #main-content, #chat-view {
@@ -177,24 +195,20 @@
             #app-container { display: block !important; }
             #sidebar { display: none !important; }
             #main-content { display: block !important; position: static !important; }
-            #chat-header {
-                display: flex !important;
-                border-bottom: 2px solid #06c755 !important;
-                padding: 10px 0 !important;
-                margin-bottom: 15px !important;
-            }
+            #chat-header { display: flex !important; border-bottom: 2px solid #06c755 !important; padding: 10px 0 !important; margin-bottom: 15px !important; }
             #chat-view { padding: 0 !important; }
             .msg-row { page-break-inside: avoid; break-inside: avoid; }
             .bubble, .avatar, .msg-avatar, .date-divider { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             .date-divider { border: 1px solid #ddd; }
 
-            /* モザイク適用時印刷維持 */
-            .bubble.is-mosaic {
-                filter: blur(6px) !important;
-                -webkit-filter: blur(6px) !important;
+            .msg-datetime-sub {
+                display: block !important;
+                visibility: visible !important;
+                -webkit-print-color-adjust: exact !important;
             }
 
-            /* 右下ページ番号印刷設定 */
+            .bubble.is-mosaic { filter: blur(6px) !important; -webkit-filter: blur(6px) !important; }
+
             body.show-page-number #print-page-footer {
                 display: block !important;
                 position: fixed;
@@ -211,6 +225,7 @@
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
     <header>
@@ -222,18 +237,17 @@
 
     <div id="drop-zone">
         <h2>ファイルを選択</h2>
-        <p style="margin-top:8px; color:#666; font-size:13px;">`Line.sqlite` や `Talk.sqlite` を読み込んで閲覧できます</p>
+        <p style="margin-top:8px; color:#666; font-size:13px;">`Line.sqlite` や `Talk.sqlite` 、ZIPアーカイブを読み込んで閲覧できます</p>
         <div class="file-inputs">
-            <label>📁 ファイルを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db"></label>
+            <label>📁 ファイル/ZIPを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip"></label>
             <label class="folder-label">📂 フォルダーを選択<input type="file" class="folder-input-elem" webkitdirectory directory multiple></label>
         </div>
         <div class="ios-note">
             📱 <b>iPhone / iPad をご利用の方へ:</b><br>
-            iOSの制限により「フォルダーを選択」はご利用いただけません。緑の<b>「📁 ファイルを選択」</b>ボタンから、ファイルアプリ内の <code>.sqlite</code> ファイルを直接（複数一括選択可）お選びください。
+            iOSのシステム制限によりフォルダー一括選択はフリーズする場合があります。iPhoneの方はバックアップフォルダを<b>ZIP圧縮して「📁 ファイル/ZIPを選択」から読み込ませる</b>か、`.sqlite` ファイルを複数直接選択してください。
         </div>
     </div>
 
-    <!-- 進捗プログレスバーモーダル -->
     <div id="progress-overlay">
         <div class="progress-box">
             <div class="progress-title" id="progress-title">データベースを解析中...</div>
@@ -244,7 +258,6 @@
         </div>
     </div>
 
-    <!-- 印刷設定モーダル -->
     <div id="print-modal">
         <div class="modal-box">
             <div class="modal-title">
@@ -256,7 +269,7 @@
                 <span class="option-label">表示フォーマット（印刷レイアウト）</span>
                 <select id="opt-format" class="styled-select">
                     <option value="bubble">💬 吹き出し形式（LINEアプリ風）</option>
-                    <option value="backup">📄 公式LINEバックアップ風（テキスト形式）</option>
+                    <option value="backup">📄 公式LINEバックアップ風（テキスト形式・日時左寄せ）</option>
                 </select>
             </div>
 
@@ -264,7 +277,7 @@
                 <span class="option-label">表示要素のON/OFF</span>
                 <label class="checkbox-label"><input type="checkbox" id="opt-header" checked> 公式バックアップ風ヘッダー（[LINE] ○○とのトーク履歴）</label>
                 <label class="checkbox-label"><input type="checkbox" id="opt-date" checked> 日付区切りを表示</label>
-                <label class="checkbox-label"><input type="checkbox" id="opt-time" checked> 送信時刻を表示</label>
+                <label class="checkbox-label"><input type="checkbox" id="opt-time" checked> トーク下の日付・時間を表示</label>
                 <label class="checkbox-label"><input type="checkbox" id="opt-sender" checked> 送信者名・アバターを表示</label>
                 <label class="checkbox-label"><input type="checkbox" id="opt-page-number" checked> ページ番号を右下に表示（印刷時）</label>
             </div>
@@ -306,7 +319,7 @@
         <div id="sidebar">
             <div class="sidebar-section">
                 <div class="add-files-bar">
-                    <label class="btn-small">＋ 追加ファイル<input type="file" class="file-input-elem" multiple accept=".sqlite,.db" style="display:none;"></label>
+                    <label class="btn-small">＋ 追加ファイル/ZIP<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip" style="display:none;"></label>
                     <label class="btn-small">＋ 追加フォルダー<input type="file" class="folder-input-elem" webkitdirectory directory multiple style="display:none;"></label>
                 </div>
                 <div>
@@ -331,8 +344,11 @@
                 </div>
                 <div class="chat-header-actions">
                     <button class="btn-small" onclick="resetAllMasks()" title="全てのモザイク・非表示をリセット">🔄 解除</button>
-                    <div class="msg-search-wrap" style="width: 100px;">
-                        <input type="text" id="msg-search" class="styled-input" placeholder="💬 検索..." oninput="filterMessages(this.value)">
+                    <div class="msg-search-box">
+                        <input type="text" id="msg-search" placeholder="💬 検索..." oninput="onSearchInput(this.value)">
+                        <span id="search-count" class="search-count"></span>
+                        <button class="btn-nav-search" onclick="navSearch(-1)">▲</button>
+                        <button class="btn-nav-search" onclick="navSearch(1)">▼</button>
                     </div>
                     <button class="btn-print" onclick="openPrintModal()">🖨️ 印刷設定</button>
                 </div>
@@ -355,12 +371,16 @@
         let rawMessages = [];
         let fileCounter = 0;
 
+        // トーク内検索ナビゲーション用変数
+        let searchMatches = [];
+        let currentSearchIdx = -1;
+
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 updateStatus('SQL.js Engine (WASM) 初期化中...');
                 if (typeof initSqlJs === 'undefined') throw new Error("sql.js ライブラリが読み込まれていません。");
                 SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
-                updateStatus('準備完了: ファイルを選択してください');
+                updateStatus('準備完了: ファイルまたはZIPを選択してください');
             } catch (err) {
                 updateStatus('初期化エラー: ' + err.message);
                 alert('初期化エラー: ' + err.message);
@@ -368,12 +388,7 @@
         });
 
         function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
-
-        function waitFrame() {
-            return new Promise(resolve => {
-                requestAnimationFrame(() => { setTimeout(resolve, 0); });
-            });
-        }
+        function waitFrame() { return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0))); }
 
         function showProgress(show, title = '', percent = 0, text = '') {
             const overlay = document.getElementById('progress-overlay');
@@ -441,14 +456,13 @@
         }
 
         function isCandidateDbFile(file) {
-            if (!file || file.size < 512) return false;
+            if (!file) return false;
             const name = file.name.toLowerCase();
             const ext = name.split('.').pop();
-            const skipExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'm4a', 'mp3', 'aac', 'plist', 'json', 'xml', 'txt', 'pdf', 'zip', 'dat', 'thumb', 'tmp'];
+            if (ext === 'zip') return true;
+            const skipExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'm4a', 'mp3', 'aac', 'plist', 'json', 'xml', 'txt', 'pdf', 'dat', 'thumb', 'tmp'];
             if (skipExts.includes(ext)) return false;
-
-            return name.endsWith('.sqlite') || name.endsWith('.db') || name.endsWith('.sqlite3') || 
-                   name.includes('line') || name.includes('talk') || name.includes('manifest') || !name.includes('.');
+            return name.endsWith('.sqlite') || name.endsWith('.db') || name.endsWith('.sqlite3') || name.includes('line') || name.includes('talk') || !name.includes('.');
         }
 
         function isSqliteFileHeader(buffer) {
@@ -463,24 +477,48 @@
             const candidateFiles = files.filter(isCandidateDbFile);
             
             if (candidateFiles.length === 0) {
-                alert('LINEデータベース（.sqlite / .db）が見つかりませんでした。');
+                alert('LINEデータベース（.sqlite / .db / .zip）が見つかりませんでした。');
                 return;
             }
 
-            showProgress(true, 'ファイルを検証中...', 0, `0 / ${candidateFiles.length} 件`);
+            showProgress(true, 'ファイルを整理中...', 0, `0 / ${candidateFiles.length} 件`);
             await waitFrame();
+
+            // ZIP解凍展開処理
+            let targetFiles = [];
+            for (let i = 0; i < candidateFiles.length; i++) {
+                const f = candidateFiles[i];
+                if (f.name.toLowerCase().endsWith('.zip')) {
+                    showProgress(true, 'ZIPファイルを展開中...', Math.round(((i + 1) / candidateFiles.length) * 100), f.name);
+                    await waitFrame();
+                    try {
+                        const zip = await JSZip.loadAsync(f);
+                        for (const relativePath in zip.files) {
+                            const entry = zip.files[relativePath];
+                            if (!entry.dir && isCandidateDbFile({ name: entry.name })) {
+                                const blob = await entry.async('blob');
+                                const decompressedFile = new File([blob], entry.name);
+                                decompressedFile.fullPath = relativePath;
+                                targetFiles.push(decompressedFile);
+                            }
+                        }
+                    } catch(e) { console.warn('ZIP展開エラー:', e); }
+                } else {
+                    targetFiles.push(f);
+                }
+            }
 
             const fileFilterSelect = document.getElementById('file-filter');
             let validDbCount = 0;
 
-            for (let i = 0; i < candidateFiles.length; i++) {
-                const f = candidateFiles[i];
+            for (let i = 0; i < targetFiles.length; i++) {
+                const f = targetFiles[i];
                 fileCounter++;
                 const fileId = 'file_' + fileCounter;
                 const displayLabel = f.webkitRelativePath || f.fullPath || f.name;
 
-                const percent = Math.round(((i + 1) / candidateFiles.length) * 100);
-                showProgress(true, 'データベースを解析中...', percent, `[${i + 1}/${candidateFiles.length}] ${f.name}`);
+                const percent = Math.round(((i + 1) / targetFiles.length) * 100);
+                showProgress(true, 'データベースを解析中...', percent, `[${i + 1}/${targetFiles.length}] ${f.name}`);
                 await waitFrame();
 
                 try {
@@ -721,7 +759,7 @@
                     return;
                 }
 
-                rawMessages = res.values.map(r => {
+                rawMessages = res.values.map((r, idx) => {
                     const rawText = r[0] || '';
                     const isMeVal = r[1];
                     const senderId = String(r[2] || '');
@@ -741,9 +779,10 @@
                     const dateObj = parseTimestamp(rawTime);
 
                     return {
+                        id: idx,
                         text, isMe, senderName,
                         dateStr: dateObj ? formatDateHeader(dateObj) : '',
-                        timeStr: dateObj ? formatTime(dateObj) : ''
+                        fullDateTimeStr: dateObj ? `${formatDate(dateObj)} ${formatTime(dateObj)}` : ''
                     };
                 });
 
@@ -751,6 +790,7 @@
                 document.getElementById('chat-header-title').innerText = chatItem.name;
                 document.getElementById('chat-header-info').innerText = `${chatItem.count}件のメッセージ`;
                 document.getElementById('msg-search').value = '';
+                document.getElementById('search-count').innerText = '';
 
                 const now = new Date();
                 const nowStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${formatTime(now)}`;
@@ -769,14 +809,56 @@
 
         function backToList() { document.body.classList.remove('show-chat'); }
 
-        function filterMessages(query) {
+        /* 🔍 トーク内検索＆該当メッセージへのジャンプ機能 */
+        function onSearchInput(query) {
             const q = query.toLowerCase().trim();
+            searchMatches = [];
+            currentSearchIdx = -1;
+
             if (!q) {
+                document.getElementById('search-count').innerText = '';
                 renderMessagesUI(rawMessages);
                 return;
             }
-            const filtered = rawMessages.filter(m => m.text.toLowerCase().includes(q) || m.senderName.toLowerCase().includes(q));
-            renderMessagesUI(filtered, q);
+
+            rawMessages.forEach((m, idx) => {
+                if (m.text.toLowerCase().includes(q) || m.senderName.toLowerCase().includes(q)) {
+                    searchMatches.push(idx);
+                }
+            });
+
+            renderMessagesUI(rawMessages, q);
+
+            if (searchMatches.length > 0) {
+                currentSearchIdx = 0;
+                updateSearchUI();
+                jumpToMessage(searchMatches[0]);
+            } else {
+                document.getElementById('search-count').innerText = '0件';
+            }
+        }
+
+        function navSearch(direction) {
+            if (searchMatches.length === 0) return;
+            currentSearchIdx += direction;
+            if (currentSearchIdx < 0) currentSearchIdx = searchMatches.length - 1;
+            if (currentSearchIdx >= searchMatches.length) currentSearchIdx = 0;
+
+            updateSearchUI();
+            jumpToMessage(searchMatches[currentSearchIdx]);
+        }
+
+        function updateSearchUI() {
+            document.getElementById('search-count').innerText = `${currentSearchIdx + 1}/${searchMatches.length}`;
+        }
+
+        function jumpToMessage(msgIdx) {
+            const el = document.getElementById(`msg-item-${msgIdx}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('highlight-target');
+                setTimeout(() => el.classList.remove('highlight-target'), 2000);
+            }
         }
 
         function renderMessagesUI(messages, highlightQuery = '') {
@@ -808,6 +890,7 @@
                 }
 
                 const row = document.createElement('div');
+                row.id = `msg-item-${m.id}`;
                 row.className = `msg-row ${m.isMe ? 'me' : 'other'}`;
                 row.innerHTML = `
                     ${!m.isMe ? `<div class="msg-avatar">${escapeHtml(m.senderName.charAt(0))}</div>` : ''}
@@ -815,24 +898,23 @@
                         <div class="msg-header-line">
                             <span class="msg-sender-name">${escapeHtml(m.senderName)}</span>
                             <div class="msg-tools">
-                                <button class="btn-msg-tool" onclick="toggleMosaic(this)" title="モザイクをかける/解除">🙈 モザイク</button>
-                                <button class="btn-msg-tool" onclick="toggleHide(this)" title="非表示にする">❌ 削除</button>
+                                <button class="btn-msg-tool" onclick="toggleMosaic(this)">🙈 モザイク</button>
+                                <button class="btn-msg-tool" onclick="toggleHide(this)">❌ 削除</button>
                             </div>
                         </div>
                         <div class="msg-body-wrap">
-                            <div class="msg-time">${m.timeStr}</div>
                             <div class="bubble">${displayText}</div>
                         </div>
+                        <div class="msg-datetime-sub">${m.fullDateTimeStr}</div>
                     </div>
                 `;
                 msgContainer.appendChild(row);
             });
 
-            updateStatus(`表示完了: ${activeChat.name} (${messages.length}件を表示)`);
-            view.scrollTop = view.scrollHeight;
+            updateStatus(`表示完了: ${activeChat.name} (${messages.length}件)`);
+            if (!highlightQuery) view.scrollTop = view.scrollHeight;
         }
 
-        /* 🙈 モザイク & ❌ 非表示切り替え用関数 */
         function toggleMosaic(btn) {
             const msgRow = btn.closest('.msg-row');
             const bubble = msgRow.querySelector('.bubble');
@@ -851,16 +933,13 @@
             document.querySelectorAll('.btn-msg-tool.active-mosaic').forEach(el => el.classList.remove('active-mosaic'));
         }
 
-        /* 🖨️ 印刷設定関連関数 */
         function openPrintModal() { document.getElementById('print-modal').style.display = 'flex'; }
         function closePrintModal() { document.getElementById('print-modal').style.display = 'none'; }
 
         function executePrint() {
-            // クラスのリセット
             document.body.classList.remove('hide-date', 'hide-time', 'hide-sender', 'hide-me', 'hide-other', 'monochrome-print', 'font-large', 'font-small', 'backup-format', 'show-page-number');
             document.getElementById('backup-header-text').style.display = 'none';
 
-            // 1. フォーマット（吹き出し vs 公式バックアップ風）
             const fmt = document.getElementById('opt-format').value;
             if (fmt === 'backup') {
                 document.body.classList.add('backup-format');
@@ -869,21 +948,17 @@
                 }
             }
 
-            // 2. ON/OFF項目の適用
             if (!document.getElementById('opt-date').checked) document.body.classList.add('hide-date');
             if (!document.getElementById('opt-time').checked) document.body.classList.add('hide-time');
             if (!document.getElementById('opt-sender').checked) document.body.classList.add('hide-sender');
             if (document.getElementById('opt-page-number').checked) document.body.classList.add('show-page-number');
 
-            // 3. 対象範囲の適用
             const target = document.getElementById('opt-target').value;
             if (target === 'me') document.body.classList.add('hide-other');
             if (target === 'other') document.body.classList.add('hide-me');
 
-            // 4. カラー設定
             if (document.getElementById('opt-color').value === 'mono') document.body.classList.add('monochrome-print');
 
-            // 5. 文字サイズ
             const size = document.getElementById('opt-size').value;
             if (size === 'large') document.body.classList.add('font-large');
             if (size === 'small') document.body.classList.add('font-small');

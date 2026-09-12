@@ -154,7 +154,7 @@
 
         @media print {
             body { background: white !important; color: black !important; height: auto !important; overflow: visible !important; }
-            header, #sidebar, #chat-header, #status-bar, .msg-tools, .btn { display: none !important; }
+            header, #sidebar, #chat-header, #status-bar, .msg-tools, .btn, #empty-state { display: none !important; }
             #app-container, #main-content, #chat-view { display: block !important; position: static !important; height: auto !important; background: white !important; }
             .bubble { box-shadow: none !important; border: 1px solid #ccc; }
         }
@@ -175,7 +175,7 @@
         <h1>💬 LINE トーク履歴マルチビューア <span style="font-size:11px; opacity:0.8; font-weight:normal;">(Pro)</span></h1>
         <div class="header-btns">
             <button class="btn" onclick="toggleTheme()" title="テーマ切替">🌓</button>
-            <button id="btn-reset" class="btn" style="display:none;" onclick="location.reload()">リセット</button>
+            <button id="btn-reset" class="btn" style="display:none;" onclick="cleanUpAndReload()">リセット</button>
         </div>
     </header>
 
@@ -183,11 +183,11 @@
         <h2>ファイルまたはフォルダーを選択</h2>
         <p style="margin-top:8px; color:#888; font-size:13px;">`Line.sqlite` 、LINEの `.txt` バックアップ、またはZIPファイルを一括読み込み</p>
         <div class="file-inputs">
-            <label>📁 ファイル/ZIPを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip,.txt"></label>
+            <label>📁 ファイル/ZIPを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.sqlite3,.zip,.txt"></label>
             <label class="folder-label">📂 フォルダーを選択<input type="file" class="folder-input-elem" webkitdirectory directory multiple></label>
         </div>
         <div class="ios-warning-box">
-            💡 <b>PCのフォルダー選択時:</b> iTunesバックアップ等の巨大フォルダーでも、トークデータベースのみを高速に自動抽出します。
+            💡 <b>PCのフォルダー選択時:</b> iTunesバックアップ等の巨大フォルダー（ハッシュ化されたファイル等）も自動解析・抽出します。
         </div>
     </div>
 
@@ -207,7 +207,7 @@
         <div id="sidebar">
             <div class="sidebar-section">
                 <div class="add-files-bar">
-                    <label class="btn-small">＋ 追加ファイル<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip,.txt" style="display:none;"></label>
+                    <label class="btn-small">＋ 追加ファイル<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.sqlite3,.zip,.txt" style="display:none;"></label>
                     <label class="btn-small">＋ 追加フォルダー<input type="file" class="folder-input-elem" webkitdirectory directory multiple style="display:none;"></label>
                 </div>
                 <div>
@@ -285,14 +285,32 @@
             } catch (err) {
                 updateStatus('初期化完了（テキスト解析対応モード）');
             }
+
+            // 検索ドロップダウン外クリック時の非表示処理
+            document.addEventListener('click', (e) => {
+                const searchBox = document.querySelector('.msg-search-box');
+                const dropdown = document.getElementById('search-dropdown');
+                if (searchBox && dropdown && !searchBox.contains(e.target)) {
+                    dropdown.style.display = 'none';
+                }
+            });
         });
 
         function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
-        function yieldToUI(ms = 30) { return new Promise(resolve => setTimeout(resolve, ms)); }
+        function yieldToUI(ms = 20) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
         function toggleTheme() {
             const current = document.body.getAttribute('data-theme');
             document.body.setAttribute('data-theme', current === 'dark' ? '' : 'dark');
+        }
+
+        function cleanUpAndReload() {
+            Object.keys(fileMap).forEach(key => {
+                if (fileMap[key].dbInstance) {
+                    try { fileMap[key].dbInstance.close(); } catch(e){}
+                }
+            });
+            location.reload();
         }
 
         function setProgressBar(show, title = '読み込み中...', percent = 0, subText = '') {
@@ -308,24 +326,67 @@
             }
         }
 
+        // ドラッグ＆ドロップ（階層再帰スキャン対応）
         const dropZone = document.getElementById('drop-zone');
         window.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
         window.addEventListener('dragleave', e => { if (e.clientX === 0 && e.clientY === 0) dropZone.classList.remove('dragover'); });
         window.addEventListener('drop', async e => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
-            const files = Array.from(e.dataTransfer.files);
+            const files = await getFilesFromDataTransfer(e.dataTransfer);
             if (files.length > 0) processFiles(files);
         });
 
         document.querySelectorAll('.file-input-elem').forEach(el => el.addEventListener('change', e => processFiles(Array.from(e.target.files))));
         document.querySelectorAll('.folder-input-elem').forEach(el => el.addEventListener('change', e => processFiles(Array.from(e.target.files))));
 
+        async function getFilesFromDataTransfer(dataTransfer) {
+            const files = [];
+            const items = dataTransfer.items;
+            if (items && items.length > 0 && items[0].webkitGetAsEntry) {
+                const entries = [];
+                for (let i = 0; i < items.length; i++) {
+                    const entry = items[i].webkitGetAsEntry();
+                    if (entry) entries.push(entry);
+                }
+                for (const entry of entries) {
+                    await readEntryRecursive(entry, files);
+                }
+            } else {
+                for (let i = 0; i < dataTransfer.files.length; i++) {
+                    files.push(dataTransfer.files[i]);
+                }
+            }
+            return files;
+        }
+
+        function readEntryRecursive(entry, files) {
+            return new Promise((resolve) => {
+                if (entry.isFile) {
+                    entry.file(f => {
+                        files.push(f);
+                        resolve();
+                    }, () => resolve());
+                } else if (entry.isDirectory) {
+                    const dirReader = entry.createReader();
+                    dirReader.readEntries(async (entries) => {
+                        for (const childEntry of entries) {
+                            await readEntryRecursive(childEntry, files);
+                        }
+                        resolve();
+                    }, () => resolve());
+                } else {
+                    resolve();
+                }
+            });
+        }
+
         async function processFiles(files) {
             const candidateFiles = files.filter(f => {
                 const name = f.name.toLowerCase();
                 const ext = name.split('.').pop();
-                return ['sqlite', 'db', 'sqlite3', 'txt', 'zip'].includes(ext) || name.includes('line.sqlite');
+                const isHexHash = /^[a-f0-9]{40}$/i.test(f.name);
+                return ['sqlite', 'db', 'sqlite3', 'txt', 'zip'].includes(ext) || name.includes('line') || isHexHash || !f.name.includes('.');
             });
 
             if (candidateFiles.length === 0) {
@@ -344,7 +405,9 @@
                 const f = candidateFiles[i];
                 if (f.size === 0) continue;
                 const fname = f.name.toLowerCase();
-                const label = f.webkitRelativePath || f.fullPath || f.name;
+                const label = f.webkitRelativePath || f.name;
+
+                setProgressBar(true, 'ファイルを解析中...', Math.round((i / candidateFiles.length) * 90) + 10, label);
 
                 if (fname.endsWith('.txt')) {
                     const res = await parseLineTextFile(f, label, fileFilterSelect);
@@ -398,38 +461,47 @@
                 let currentMsg = null;
 
                 for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i].trim();
-                    if (!line) continue;
-                    if (i === 0 && line.startsWith('[LINE]')) {
-                        const m = line.match(/\[LINE\]\s*(.*?)とのトーク履歴/);
+                    const rawLine = lines[i];
+                    const trimmedLine = rawLine.trim();
+                    if (!trimmedLine) continue;
+
+                    if (i === 0 && trimmedLine.startsWith('[LINE]')) {
+                        const m = trimmedLine.match(/\[LINE\]\s*(.*?)とのトーク履歴/);
                         if (m && m[1]) title = m[1];
                         continue;
                     }
-                    if (line.startsWith('保存日時：') || line.startsWith('Saved:')) continue;
+                    if (trimmedLine.startsWith('保存日時：') || trimmedLine.startsWith('Saved:')) continue;
 
-                    const dateMatch = line.match(/^(\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2}(?:\([日月火水木金土]\))?)/);
-                    if (dateMatch && !line.includes('\t')) {
+                    const dateMatch = trimmedLine.match(/^(\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2}(?:\([日月火水木金土]\))?)/);
+                    if (dateMatch && !trimmedLine.includes('\t')) {
                         currentDate = dateMatch[1];
                         continue;
                     }
 
-                    const msgMatch = line.match(/^(\d{1,2}:\d{2})\t([^\t]+)\t(.*)/);
+                    const msgMatch = rawLine.match(/^(\d{1,2}:\d{2})\t([^\t]+)\t(.*)/);
                     if (msgMatch) {
                         if (currentMsg) messages.push(currentMsg);
                         currentMsg = {
-                            id: messages.length, text: msgMatch[3], isMe: (msgMatch[2] === '自分' || msgMatch[2] === 'Me'),
-                            senderName: msgMatch[2], dateStr: currentDate, fullDateTimeStr: currentDate ? `${currentDate} ${msgMatch[1]}` : msgMatch[1]
+                            id: messages.length, 
+                            text: msgMatch[3], 
+                            isMe: (msgMatch[2] === '自分' || msgMatch[2] === 'Me'),
+                            senderName: msgMatch[2], 
+                            dateStr: currentDate, 
+                            fullDateTimeStr: currentDate ? `${currentDate} ${msgMatch[1]}` : msgMatch[1]
                         };
                         continue;
                     }
-                    if (currentMsg) currentMsg.text += '\n' + line;
+
+                    if (currentMsg) {
+                        currentMsg.text += '\n' + rawLine;
+                    }
                 }
                 if (currentMsg) messages.push(currentMsg);
                 if (messages.length === 0) return { success: false };
 
                 fileCounter++;
                 const fileId = 'file_' + fileCounter;
-                fileMap[fileId] = { file, displayLabel, isText: true, messages };
+                fileMap[fileId] = { file, displayLabel, isText: true, messages, dbInstance: null };
 
                 const opt = document.createElement('option');
                 opt.value = fileId;
@@ -448,11 +520,14 @@
                 const buf = await file.arrayBuffer();
                 db = new SQL.Database(new Uint8Array(buf));
                 const schema = detectSchema(db);
-                if (!schema.msgTable) return { success: false };
+                if (!schema.msgTable) {
+                    db.close();
+                    return { success: false };
+                }
 
                 fileCounter++;
                 const fileId = 'file_' + fileCounter;
-                fileMap[fileId] = { file, displayLabel, schema, isText: false };
+                fileMap[fileId] = { file, displayLabel, schema, isText: false, dbInstance: db };
 
                 const opt = document.createElement('option');
                 opt.value = fileId;
@@ -464,10 +539,16 @@
                 allChatRooms.push(...rooms);
                 return { success: true };
             } catch (err) {
-                return { success: false };
-            } finally {
                 if (db) db.close();
+                return { success: false };
             }
+        }
+
+        async function getDatabaseForFile(fileObj) {
+            if (fileObj.dbInstance) return fileObj.dbInstance;
+            const buf = await fileObj.file.arrayBuffer();
+            fileObj.dbInstance = new SQL.Database(new Uint8Array(buf));
+            return fileObj.dbInstance;
         }
 
         function detectSchema(db) {
@@ -492,12 +573,12 @@
                 const cols = db.exec("PRAGMA table_info(chat_history)")[0].values.map(c => c[1]);
                 return {
                     type: 'Android', msgTable: 'chat_history',
-                    chatCol: cols.find(c => /chat_id/i.test(c)) || 'chat_id',
-                    textCol: cols.find(c => /content/i.test(c)) || 'content',
-                    timeCol: cols.find(c => /created_time/i.test(c)) || 'created_time',
-                    isMeCol: cols.find(c => /is_sent|status/i.test(c)) || null,
-                    senderCol: cols.find(c => /from_mid/i.test(c)) || 'from_mid',
-                    typeCol: cols.find(c => /type/i.test(c)) || 'type',
+                    chatCol: cols.find(c => /^chat_id$/i.test(c)) || 'chat_id',
+                    textCol: cols.find(c => /^content$/i.test(c)) || 'content',
+                    timeCol: cols.find(c => /^created_time$/i.test(c)) || 'created_time',
+                    isMeCol: cols.find(c => /^is_sent$/i.test(c)) || null,
+                    senderCol: cols.find(c => /^from_mid$/i.test(c)) || 'from_mid',
+                    typeCol: cols.find(c => /^type$/i.test(c)) || 'type',
                     userTable: tables.includes('contacts') ? 'contacts' : null,
                     chatTable: tables.includes('chat') ? 'chat' : null
                 };
@@ -506,13 +587,13 @@
         }
 
         function loadDictionaries(db, sch) {
-            let userMap = {}, chatMap = {};
+            let userMap = {}, chatMap = {}, chatToUserMap = {};
             if (sch.userTable) {
                 try {
                     const res = db.exec(`SELECT * FROM "${sch.userTable}"`)[0];
                     if (res) {
                         const cols = res.columns.map(c => c.toUpperCase());
-                        const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID' || c === '_ID');
+                        const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID' || c === '_ID' || c === 'MID');
                         const nameIdx = cols.findIndex(c => c === 'ZCUSTOMNAME' || c === 'ZNAME' || c === 'DISPLAY_NAME' || c === 'NAME');
                         res.values.forEach(r => { if (r[nameIdx] && pkIdx !== -1) userMap[String(r[pkIdx])] = String(r[nameIdx]); });
                     }
@@ -525,10 +606,24 @@
                         const cols = res.columns.map(c => c.toUpperCase());
                         const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID' || c === 'CHAT_ID');
                         const nameIdx = cols.findIndex(c => c.includes('NAME') || c.includes('TITLE'));
-                        res.values.forEach(r => { if (r[nameIdx] && pkIdx !== -1) chatMap[String(r[pkIdx])] = String(r[nameIdx]); });
+                        const userIdx = cols.findIndex(c => c === 'ZUSER' || c === 'USER_ID');
+                        res.values.forEach(r => { 
+                            const pk = String(r[pkIdx]);
+                            if (nameIdx !== -1 && r[nameIdx]) chatMap[pk] = String(r[nameIdx]); 
+                            if (userIdx !== -1 && r[userIdx]) chatToUserMap[pk] = String(r[userIdx]);
+                        });
                     }
                 } catch(e){}
             }
+
+            // 1対1トークの名称が空の場合にユーザー辞書からフォールバック解決
+            Object.keys(chatToUserMap).forEach(chatPk => {
+                if (!chatMap[chatPk]) {
+                    const userPk = chatToUserMap[chatPk];
+                    if (userMap[userPk]) chatMap[chatPk] = userMap[userPk];
+                }
+            });
+
             return { userMap, chatMap };
         }
 
@@ -571,6 +666,7 @@
                 container.innerHTML = '<div style="padding:20px; text-align:center; color:#888; font-size:13px;">該当するトークなし</div>';
                 return;
             }
+            const fragment = document.createDocumentFragment();
             list.forEach(item => {
                 const el = document.createElement('div');
                 el.className = `chat-item ${activeChat && activeChat.id === item.id && activeChat.fileId === item.fileId ? 'active' : ''}`;
@@ -588,13 +684,14 @@
                     activeChat = item;
                     loadMessagesOnDemand(item);
                 };
-                container.appendChild(el);
+                fragment.appendChild(el);
             });
+            container.appendChild(fragment);
         }
 
         async function loadMessagesOnDemand(chatItem) {
             setProgressBar(true, 'メッセージ読込中...', 50, chatItem.name);
-            await yieldToUI(30);
+            await yieldToUI(20);
 
             const fileObj = fileMap[chatItem.fileId];
             if (!fileObj) return;
@@ -606,10 +703,8 @@
                 return;
             }
 
-            let db = null;
             try {
-                const buf = await fileObj.file.arrayBuffer();
-                db = new SQL.Database(new Uint8Array(buf));
+                const db = await getDatabaseForFile(fileObj);
                 const sch = fileObj.schema;
                 const { userMap } = loadDictionaries(db, sch);
 
@@ -622,9 +717,6 @@
                 `;
 
                 let res = db.exec(query)[0];
-                db.close();
-                db = null;
-
                 if (!res || !res.values) { setProgressBar(false); return; }
 
                 rawMessages = res.values.map((r, idx) => {
@@ -657,7 +749,6 @@
                 displayMessagesInUI(chatItem);
                 setProgressBar(false);
             } catch (err) {
-                if (db) db.close();
                 setProgressBar(false);
             }
         }
@@ -676,17 +767,18 @@
             const view = document.getElementById('chat-view');
             view.innerHTML = '';
 
-            let msgContainer = document.createElement('div');
+            const msgContainer = document.createElement('div');
             msgContainer.id = 'messages-container';
-            view.appendChild(msgContainer);
 
+            const fragment = document.createDocumentFragment();
             let lastDateStr = '';
+
             messages.forEach(m => {
                 if (m.dateStr && m.dateStr !== lastDateStr) {
                     const dateDiv = document.createElement('div');
                     dateDiv.className = 'date-divider';
                     dateDiv.innerText = m.dateStr;
-                    msgContainer.appendChild(dateDiv);
+                    fragment.appendChild(dateDiv);
                     lastDateStr = m.dateStr;
                 }
 
@@ -709,8 +801,11 @@
                         <div class="msg-datetime-sub">${m.fullDateTimeStr}</div>
                     </div>
                 `;
-                msgContainer.appendChild(row);
+                fragment.appendChild(row);
             });
+
+            msgContainer.appendChild(fragment);
+            view.appendChild(msgContainer);
             view.scrollTop = view.scrollHeight;
         }
 
@@ -749,6 +844,7 @@
             }
 
             dropdown.innerHTML = '';
+            const fragment = document.createDocumentFragment();
             matched.slice(0, 30).forEach(m => {
                 const item = document.createElement('div');
                 item.className = 'search-result-item';
@@ -766,8 +862,9 @@
                         setTimeout(() => targetRow.style.backgroundColor = '', 1500);
                     }
                 };
-                dropdown.appendChild(item);
+                fragment.appendChild(item);
             });
+            dropdown.appendChild(fragment);
             dropdown.style.display = 'block';
         }
 

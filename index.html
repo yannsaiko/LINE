@@ -376,7 +376,6 @@
             }
         }
 
-        // 🛠️ パスの正規化（一番外側のフォルダ名の有無による住所のズレを統一）
         function normalizePath(relPath) {
             if (!relPath) return '';
             const parts = relPath.split('/').filter(Boolean);
@@ -401,7 +400,6 @@
             }
         });
 
-        // 🔄 ドロップ操作から最奥階層まで再帰スキャンする関数
         async function scanFilesFromDataTransfer(dataTransfer) {
             const items = dataTransfer.items;
             if (!items) {
@@ -464,7 +462,6 @@
             });
         }
 
-        // 📁 ボタンによるファイル/フォルダー選択イベント
         document.querySelectorAll('.file-input-elem').forEach(el => el.addEventListener('change', e => {
             const items = Array.from(e.target.files).map(f => ({
                 file: f,
@@ -481,7 +478,6 @@
             processUnifiedFileList(items);
         }));
 
-        // 🚀 共通一括処理パイプライン
         async function processUnifiedFileList(fileItems) {
             const candidateItems = fileItems.filter(item => {
                 const name = item.file.name.toLowerCase();
@@ -502,7 +498,6 @@
             let validCount = 0;
             const fileFilterSelect = document.getElementById('file-filter');
 
-            // 🛠️ フェーズ1: フォルダ内の全DBから事前に名前辞書（contacts, ZUSER等）を抽出してグローバル登録
             if (SQL) {
                 for (const item of candidateItems) {
                     const fname = item.file.name.toLowerCase();
@@ -519,7 +514,6 @@
                 }
             }
 
-            // 🛠️ フェーズ2: トーク履歴本体の解析処理
             for (let i = 0; i < candidateItems.length; i++) {
                 const item = candidateItems[i];
                 const f = item.file;
@@ -583,7 +577,6 @@
             updateStatus(`解析完了: ${allChatRooms.length} 件のトークを表示可能`);
         }
 
-        /* 🛠️ LINEテキスト履歴 (.txt) パース処理 */
         async function parseLineTextFile(file, displayLabel, fileFilterSelect) {
             try {
                 const text = await file.text();
@@ -696,7 +689,6 @@
             }
         }
 
-        /* 🔍 スキーマ検出 */
         function detectSchema(db) {
             let tables = [];
             try {
@@ -736,7 +728,6 @@
             return {};
         }
 
-        /* 📖 辞書作成 */
         function loadDictionaries(db, sch) {
             let userMap = {}, chatMap = {};
 
@@ -815,7 +806,7 @@
             return { userMap, chatMap };
         }
 
-        /* 💬 トークルーム一覧取得 */
+        /* 💬 トークルーム一覧取得（個別トークの相手名前補完付き） */
         function fetchChatRooms(db, sch, userMap, chatMap, fileId, displayLabel) {
             const query = `
                 SELECT "${sch.chatCol}", COUNT(*), MAX("${sch.timeCol}")
@@ -830,7 +821,36 @@
 
             return res.values.map(r => {
                 const chatId = String(r[0]);
-                let name = chatMap[chatId] || userMap[chatId] || `トーク部屋 (${chatId})`;
+                let name = chatMap[chatId] || userMap[chatId] || null;
+
+                // 🔧 名前の自動フォールバック補完: 個別トーク等で名前がない場合、送信者の名前から抽出
+                if (!name || name.startsWith('トーク部屋')) {
+                    try {
+                        const safeId = chatId.replace(/'/g, "''");
+                        const senderQuery = `
+                            SELECT "${sch.senderCol}" 
+                            FROM "${sch.msgTable}" 
+                            WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' 
+                              AND "${sch.senderCol}" IS NOT NULL 
+                              AND "${sch.senderCol}" != '' 
+                              AND "${sch.senderCol}" != '0' 
+                            LIMIT 5
+                        `;
+                        const senderRes = db.exec(senderQuery)[0];
+                        if (senderRes && senderRes.values) {
+                            for (const sRow of senderRes.values) {
+                                const sId = String(sRow[0]);
+                                if (userMap[sId]) {
+                                    name = userMap[sId];
+                                    break;
+                                }
+                            }
+                        }
+                    } catch(e){}
+                }
+
+                if (!name) name = `トーク部屋 (${chatId})`;
+
                 const dateObj = parseTimestamp(r[2]);
                 return { fileId, displayLabel, id: chatId, name, count: r[1], lastTime: dateObj ? formatDate(dateObj) : '日時不明' };
             });
@@ -1020,7 +1040,6 @@
             view.scrollTop = view.scrollHeight;
         }
 
-        /* ☑ 全選択 / 全解除 */
         function toggleSelectAll(selectAll) {
             document.querySelectorAll('.msg-select-check').forEach(cb => {
                 cb.checked = selectAll;
@@ -1034,7 +1053,6 @@
             if (modalCount) modalCount.innerText = selected;
         }
 
-        /* 💧 ぼかし / 🙈 隠す / 🔄 一括解除 */
         function toggleMosaic(btn) {
             const bubble = btn.closest('.msg-content').querySelector('.bubble');
             if (bubble) bubble.classList.toggle('is-mosaic');
@@ -1050,7 +1068,6 @@
             document.querySelectorAll('.is-hidden-msg').forEach(el => el.classList.remove('is-hidden-msg'));
         }
 
-        /* 🔍 メッセージ検索機能 */
         let searchMatches = [];
         function onSearchInput(query) {
             const dropdown = document.getElementById('search-dropdown');
@@ -1104,7 +1121,6 @@
             if (box && !box.contains(e.target) && dropdown) dropdown.style.display = 'none';
         });
 
-        /* 🖨️ 印刷モーダル制御 */
         function openPrintModal() {
             if (!activeChat) {
                 alert('印刷対象のトークを選択してください。');
@@ -1122,7 +1138,6 @@
             updateSelectedCount();
         }
 
-        /* 🖨️ 印刷実行 */
         function executePrint() {
             const optScopeSelected = document.getElementById('print-opt-scope-selected').checked;
             const optTextMode = document.getElementById('print-opt-text-mode').checked;
@@ -1202,7 +1217,7 @@
             window.print();
         }
 
-        /* ⏰ タイムスタンプ解析の精度向上 */
+        /* ⏰ タイムスタンプ解析（iOS Apple Epoch / CoreData & Unixタイムスタンプ完全対応） */
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;
             
@@ -1214,15 +1229,47 @@
             let num = Number(ts);
             if (isNaN(num) || num === 0) return null;
 
-            if (num > 1000000000000 && num < 2000000000000) return new Date(num);
-            if (num > 1000000000 && num < 2000000000) return new Date(num * 1000);
+            const appleEpochMs = 978307200000; // 2001-01-01 00:00:00 UTC (iOS CoreData 基準時)
 
-            const appleEpochMs = 978307200000;
-            if (num > 100000000000000000) return new Date(appleEpochMs + (num / 1000000));
-            if (num > 100000000000) return new Date(appleEpochMs + (num / 1000));
-            if (num > 100000000 && num <= 1000000000) return new Date(appleEpochMs + (num * 1000));
+            // 1. Unix タイムスタンプ (ミリ秒) : 2017年〜2049年
+            if (num >= 1500000000000 && num <= 2500000000000) {
+                return new Date(num);
+            }
+            // 2. Unix タイムスタンプ (秒) : 2001年〜2038年
+            if (num >= 1000000000 && num <= 2147483647) {
+                return new Date(num * 1000);
+            }
+            // 3. Apple Epoch (ミリ秒) : 2010年〜2038年
+            if (num >= 300000000000 && num <= 1200000000000) {
+                return new Date(appleEpochMs + num);
+            }
+            // 4. Apple Epoch (秒) : 2010年〜2038年
+            if (num >= 300000000 && num <= 1200000000) {
+                return new Date(appleEpochMs + (num * 1000));
+            }
+            // 5. 超高精度 (ナノ秒・マイクロ秒) Apple Epoch への判定処理
+            if (num > 1000000000000000) {
+                // 10^18 や 10^15 オーダーをミリ秒に変換
+                let reduced = num;
+                while (reduced > 2500000000000) {
+                    reduced = Math.floor(reduced / 1000);
+                }
+                if (reduced >= 1500000000000) return new Date(reduced); // Unix ms
+                if (reduced >= 300000000000) return new Date(appleEpochMs + reduced); // Apple ms
+            }
 
-            return new Date(num);
+            // フォールバック試行
+            const directDate = new Date(num);
+            if (!isNaN(directDate.getTime()) && directDate.getFullYear() >= 2010 && directDate.getFullYear() <= 2035) {
+                return directDate;
+            }
+
+            const appleFallback = new Date(appleEpochMs + num);
+            if (!isNaN(appleFallback.getTime()) && appleFallback.getFullYear() >= 2010 && appleFallback.getFullYear() <= 2035) {
+                return appleFallback;
+            }
+
+            return null;
         }
 
         function formatDateHeader(d) {

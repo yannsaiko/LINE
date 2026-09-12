@@ -130,6 +130,9 @@
 
         /* 🖨️ 印刷用メディアクエリ */
         @media print {
+            @page {
+                margin: 12mm; /* URLやページ番号などのブラウザ標準ヘッダー・フッターを消去 */
+            }
             header, #sidebar, .chat-header-actions, .btn-back, #status-bar, #print-modal, #progress-overlay, #drop-zone, .msg-tools, .search-results-dropdown, .msg-select-check {
                 display: none !important;
             }
@@ -177,7 +180,7 @@
                 print-color-adjust: exact !important;
             }
 
-            /* 📄 公式LINEバックアップ テキスト形式印刷モード */
+            /* 📄 公式LINEテキストバックアップ印刷モード */
             body.print-text-mode #messages-container { display: none !important; }
             body.print-text-mode #official-text-print-view {
                 display: block !important;
@@ -211,14 +214,14 @@
 
     <div id="drop-zone">
         <h2>ファイルまたはフォルダーを選択</h2>
-        <p style="margin-top:8px; color:#666; font-size:13px;">`Line.sqlite` 、LINEの `.txt` バックアップ、またはZIPファイルを読み込めます</p>
+        <p style="margin-top:8px; color:#666; font-size:13px;">`Line.sqlite` 、LINEの `.txt` バックアップ、または抽出フォルダー全体を読み込めます</p>
         <div class="file-inputs">
             <label>📁 ファイル/ZIPを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip,.txt"></label>
             <label class="folder-label">📂 フォルダーを選択<input type="file" class="folder-input-elem" webkitdirectory directory multiple></label>
         </div>
         <div class="ios-warning-box">
-            💡 <b>PCのフォルダー選択時:</b><br>
-            iTunesバックアップフォルダー全体を指定した場合でも、対象データのみを高速抽出します。
+            💡 <b>ヒント:</b><br>
+            アプリから抜き出したフォルダー全体を選択すると、名前辞書（`ZUSER` / `contacts`）と自動結合して名前を正常表示します。
         </div>
     </div>
 
@@ -378,7 +381,6 @@
         window.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
         window.addEventListener('dragleave', e => { if (e.clientX === 0 && e.clientY === 0) dropZone.classList.remove('dragover'); });
         
-        /* 📂 ドロップ対応 */
         window.addEventListener('drop', async e => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
@@ -637,6 +639,7 @@
             }
         }
 
+        /* 🔍 スキーマ検出（最新構造拡張版） */
         function detectSchema(db) {
             let tables = [];
             try {
@@ -653,7 +656,7 @@
                     isMeCol: cols.find(c => /^ZISFROMME$/i.test(c)) || null,
                     senderCol: cols.find(c => /^ZSENDER$/i.test(c)) || 'ZSENDER',
                     typeCol: cols.find(c => /^ZCONTENTTYPE$/i.test(c)) || 'ZCONTENTTYPE',
-                    userTable: tables.includes('ZUSER') ? 'ZUSER' : null,
+                    userTable: tables.includes('ZUSER') ? 'ZUSER' : (tables.includes('ZUSERHEADER') ? 'ZUSERHEADER' : null),
                     chatTable: tables.includes('ZCHAT') ? 'ZCHAT' : null
                 };
             }
@@ -667,13 +670,14 @@
                     isMeCol: cols.find(c => /is_sent|status/i.test(c)) || null,
                     senderCol: cols.find(c => /from_mid/i.test(c)) || 'from_mid',
                     typeCol: cols.find(c => /type/i.test(c)) || 'type',
-                    userTable: tables.includes('contacts') ? 'contacts' : null,
-                    chatTable: tables.includes('chat') ? 'chat' : null
+                    userTable: tables.includes('contacts') ? 'contacts' : (tables.includes('friends') ? 'friends' : null),
+                    chatTable: tables.includes('chat') ? 'chat' : (tables.includes('groups') ? 'groups' : null)
                 };
             }
             return {};
         }
 
+        /* 📖 辞書作成（全名前カラム網羅＆二重マッピング対応） */
         function loadDictionaries(db, sch) {
             let userMap = {}, chatMap = {};
 
@@ -683,14 +687,30 @@
                     if (res) {
                         const cols = res.columns.map(c => c.toUpperCase());
                         const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID' || c === '_ID');
-                        const midIdx = cols.findIndex(c => c === 'ZMID' || c === 'MID' || c === 'MEMBER_MID');
-                        const nameIdx = cols.findIndex(c => c === 'ZCUSTOMNAME' || c === 'ZNAME' || c === 'DISPLAY_NAME' || c === 'NAME');
+                        const midIdx = cols.findIndex(c => c === 'ZMID' || c === 'MID' || c === 'MEMBER_MID' || c === 'ZADDRESSBOOKID' || c === 'SERVER_ID');
+                        
+                        const nameIndices = [];
+                        const priorityCols = ['ZCUSTOMNAME', 'ZNAME', 'ZADDRESSBOOKNAME', 'CUSTOM_NAME', 'DISPLAY_NAME', 'NAME', 'NICKNAME'];
+                        priorityCols.forEach(p => {
+                            const idx = cols.indexOf(p);
+                            if (idx !== -1) nameIndices.push(idx);
+                        });
+                        cols.forEach((c, i) => {
+                            if (/NAME|TITLE|NICK/i.test(c) && !nameIndices.includes(i)) nameIndices.push(i);
+                        });
 
                         res.values.forEach(r => {
-                            const nameVal = r[nameIdx];
+                            let nameVal = null;
+                            for (const idx of nameIndices) {
+                                if (r[idx] && String(r[idx]).trim() !== '') {
+                                    nameVal = String(r[idx]).trim();
+                                    break;
+                                }
+                            }
+
                             if (nameVal) {
-                                if (pkIdx !== -1 && r[pkIdx] !== null) userMap[String(r[pkIdx])] = String(nameVal);
-                                if (midIdx !== -1 && r[midIdx] !== null) userMap[String(r[midIdx])] = String(nameVal);
+                                if (pkIdx !== -1 && r[pkIdx] !== null) userMap[String(r[pkIdx])] = nameVal;
+                                if (midIdx !== -1 && r[midIdx] !== null) userMap[String(r[midIdx])] = nameVal;
                             }
                         });
                     }
@@ -703,14 +723,30 @@
                     if (res) {
                         const cols = res.columns.map(c => c.toUpperCase());
                         const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID' || c === 'CHAT_ID');
-                        const midIdx = cols.findIndex(c => c === 'ZMID' || c === 'MID');
-                        const nameIdx = cols.findIndex(c => c.includes('NAME') || c.includes('TITLE'));
+                        const midIdx = cols.findIndex(c => c === 'ZMID' || c === 'MID' || c === 'ZADDRESSBOOKID');
+                        
+                        const nameIndices = [];
+                        const priorityCols = ['ZTITLE', 'ZNAME', 'TITLE', 'NAME', 'CHAT_NAME'];
+                        priorityCols.forEach(p => {
+                            const idx = cols.indexOf(p);
+                            if (idx !== -1) nameIndices.push(idx);
+                        });
+                        cols.forEach((c, i) => {
+                            if (/NAME|TITLE/i.test(c) && !nameIndices.includes(i)) nameIndices.push(i);
+                        });
 
                         res.values.forEach(r => {
-                            const nameVal = r[nameIdx];
+                            let nameVal = null;
+                            for (const idx of nameIndices) {
+                                if (r[idx] && String(r[idx]).trim() !== '') {
+                                    nameVal = String(r[idx]).trim();
+                                    break;
+                                }
+                            }
+
                             if (nameVal) {
-                                if (pkIdx !== -1 && r[pkIdx] !== null) chatMap[String(r[pkIdx])] = String(nameVal);
-                                if (midIdx !== -1 && r[midIdx] !== null) chatMap[String(r[midIdx])] = String(nameVal);
+                                if (pkIdx !== -1 && r[pkIdx] !== null) chatMap[String(r[pkIdx])] = nameVal;
+                                if (midIdx !== -1 && r[midIdx] !== null) chatMap[String(r[midIdx])] = nameVal;
                             }
                         });
                     }
@@ -720,6 +756,7 @@
             return { userMap, chatMap };
         }
 
+        /* 💬 トークルーム一覧取得 */
         function fetchChatRooms(db, sch, userMap, chatMap, fileId, displayLabel) {
             const query = `
                 SELECT "${sch.chatCol}", COUNT(*), MAX("${sch.timeCol}")
@@ -1027,7 +1064,7 @@
             updateSelectedCount();
         }
 
-        /* 🖨️ 印刷実行（公式LINEテキスト形式 ＆ 選択部分印刷） */
+        /* 🖨️ 印刷実行 */
         function executePrint() {
             const optScopeSelected = document.getElementById('print-opt-scope-selected').checked;
             const optTextMode = document.getElementById('print-opt-text-mode').checked;
@@ -1037,14 +1074,12 @@
             const optHideMasked = document.getElementById('print-opt-hide-masked').checked;
             const optBg = document.getElementById('print-opt-bg').checked;
 
-            // 選択件数チェック
             const selectedRows = document.querySelectorAll('.msg-row .msg-select-check:checked');
             if (optScopeSelected && selectedRows.length === 0) {
                 alert('印刷するメッセージが選択されていません。\nメッセージ横のチェックボックス（☑）を選択してください。');
                 return;
             }
 
-            // メッセージごとの印刷フラグ設定
             document.querySelectorAll('.msg-row').forEach(row => {
                 const isChecked = row.querySelector('.msg-select-check').checked;
                 if (isChecked) {
@@ -1054,7 +1089,6 @@
                 }
             });
 
-            // 日付ディバイダーの表示判定
             document.querySelectorAll('.date-divider').forEach(div => {
                 const dateVal = div.dataset.date;
                 const hasSelected = Array.from(document.querySelectorAll(`.msg-row[data-date="${dateVal}"]`))
@@ -1063,7 +1097,6 @@
                 else div.classList.remove('has-selected-msg');
             });
 
-            // 📄 公式LINEテキスト形式（.txtバックアップ互換）構築
             if (optTextMode) {
                 const textPrintContainer = document.getElementById('official-text-print-view');
                 const now = new Date();
@@ -1081,9 +1114,7 @@
                     const rowEl = document.getElementById(`msg-${m.id}`);
                     if (!rowEl) return;
 
-                    // 選択絞り込みチェック
                     if (optScopeSelected && !rowEl.classList.contains('is-selected-for-print')) return;
-                    // ぼかし/非表示マスク除外チェック
                     if (optHideMasked && (rowEl.classList.contains('is-hidden-msg') || rowEl.querySelector('.is-mosaic'))) return;
 
                     if (m.dateStr && m.dateStr !== currentPrintedDate) {
@@ -1094,7 +1125,6 @@
                     const timePart = optTime ? (m.timeOnlyStr || '00:00') : '';
                     const senderPart = optSender ? m.senderName : '';
                     
-                    // LINE公式フォーマット: 時刻 \t 送信者 \t 本文
                     textLines.push(`${timePart}\t${senderPart}\t${m.text}`);
                 });
 

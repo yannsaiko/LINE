@@ -17,12 +17,20 @@
         
         #drop-zone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 3px dashed #06c755; margin: 16px; border-radius: 12px; background: white; text-align: center; padding: 20px; overflow-y: auto; }
         #drop-zone.dragover { background: #e8f8ee; border-color: #00b348; }
-        .file-inputs { margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 100%; }
+        .file-inputs { margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 500px; }
         .file-inputs label { background: #06c755; color: white; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; transition: background 0.2s; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; flex: 1; min-width: 140px; }
         .file-inputs label:active { background: #05b34c; }
         .file-inputs input { display: none; }
-        .ios-note { margin-top: 12px; font-size: 12px; color: #666; line-height: 1.4; background: #f0fdf4; padding: 8px 12px; border-radius: 6px; border: 1px solid #bbf7d0; }
+        .ios-note { margin-top: 15px; font-size: 12px; color: #444; line-height: 1.5; background: #f0fdf4; padding: 10px 14px; border-radius: 8px; border: 1px solid #bbf7d0; max-width: 500px; text-align: left; }
         
+        /* 進捗プログレスバーモーダル */
+        #progress-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .progress-box { background: white; padding: 24px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); text-align: center; }
+        .progress-title { font-size: 16px; font-weight: bold; margin-bottom: 12px; }
+        .progress-bar-container { width: 100%; background: #eee; height: 12px; border-radius: 6px; overflow: hidden; margin: 12px 0; }
+        .progress-bar-fill { height: 100%; background: #06c755; width: 0%; transition: width 0.2s ease; }
+        .progress-text { font-size: 13px; color: #666; word-break: break-all; }
+
         #app-container { flex: 1; display: none; height: calc(100vh - 50px); overflow: hidden; position: relative; }
         
         /* サイドバー */
@@ -83,6 +91,30 @@
         .highlight { background-color: #ffeb3b; padding: 1px 2px; border-radius: 2px; }
         #status-bar { background: #2d3748; color: white; font-size: 11px; padding: 6px 12px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+        /* 🖨️ 印刷設定モーダル */
+        #print-modal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-box { background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 440px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; }
+        .modal-title { font-size: 16px; font-weight: bold; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+        .option-group { margin-bottom: 14px; }
+        .option-label { font-size: 12px; font-weight: bold; color: #666; margin-bottom: 6px; display: block; }
+        .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 6px; cursor: pointer; }
+        .modal-btns { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+        .btn-cancel { background: #e2e8f0; color: #4a5568; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
+        .btn-exec-print { background: #06c755; color: white; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
+
+        /* 公式バックアップ形式用スタイル設定 */
+        #backup-header-text { display: none; background: #ffffff; padding: 12px; border-bottom: 1px solid #ccc; font-family: monospace; font-size: 13px; line-height: 1.5; white-space: pre-wrap; margin-bottom: 10px; }
+
+        body.backup-format #main-content { background: #ffffff !important; }
+        body.backup-format #messages-container { gap: 4px !important; }
+        body.backup-format .msg-row { max-width: 100% !important; width: 100% !important; align-self: flex-start !important; flex-direction: row !important; }
+        body.backup-format .msg-avatar { display: none !important; }
+        body.backup-format .msg-sender-name { display: inline !important; margin: 0 6px 0 0 !important; font-weight: bold; }
+        body.backup-format .msg-body-wrap { flex-direction: row !important; align-items: baseline !important; gap: 8px !important; }
+        body.backup-format .bubble { background: transparent !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; display: inline !important; word-break: break-all; }
+        body.backup-format .msg-time { display: inline !important; min-width: 45px; }
+        body.backup-format .date-divider { background: transparent !important; text-align: left !important; padding: 8px 0 4px 0 !important; border-bottom: 1px dashed #ccc !important; font-weight: bold; border-radius: 0 !important; width: 100%; color: #000 !important; }
+
         /* 📱 スマホ（iPhone等）用レスポンシブスタイル */
         @media (max-width: 768px) {
             #sidebar { width: 100%; height: 100%; position: absolute; left: 0; top: 0; z-index: 5; }
@@ -91,14 +123,28 @@
             body.show-chat #main-content { display: flex !important; }
             
             .btn-back { display: inline-flex; }
-            .msg-search-wrap { width: 110px !important; }
+            .msg-search-wrap { width: 100px !important; }
             .msg-row { max-width: 88%; }
             #drop-zone { margin: 10px; padding: 15px; }
         }
 
+        /* 🖨️ 印刷オプション動的適用のCSS */
+        body.hide-date .date-divider { display: none !important; }
+        body.hide-time .msg-time { display: none !important; }
+        body.hide-sender .msg-sender-name, body.hide-sender .msg-avatar { display: none !important; }
+        body.hide-me .msg-row.me { display: none !important; }
+        body.hide-other .msg-row.other { display: none !important; }
+        body.monochrome-print .bubble { background: #ffffff !important; border: 1px solid #888 !important; color: #000 !important; }
+        body.monochrome-print #main-content { background: #ffffff !important; }
+        
+        body.font-large { font-size: 16px; }
+        body.font-large .bubble { font-size: 16px; }
+        body.font-small { font-size: 12px; }
+        body.font-small .bubble { font-size: 12px; }
+
         /* 🖨️ 印刷専用CSS設定 */
         @media print {
-            header, #sidebar, #status-bar, .file-inputs, .add-files-bar, #msg-search, .btn-print, #btn-reset, .btn-back {
+            header, #sidebar, #status-bar, .file-inputs, .add-files-bar, #msg-search, .btn-print, #btn-reset, .btn-back, #print-modal, #progress-overlay {
                 display: none !important;
             }
             body, #app-container, #main-content, #chat-view {
@@ -117,7 +163,7 @@
                 margin-bottom: 15px !important;
             }
             #chat-view { padding: 0 !important; }
-            .msg-row { page-break-inside: avoid; break-inside: avoid; max-width: 85% !important; }
+            .msg-row { page-break-inside: avoid; break-inside: avoid; }
             .bubble, .avatar, .msg-avatar, .date-divider { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             .date-divider { border: 1px solid #ddd; }
         }
@@ -139,7 +185,78 @@
             <label>📁 ファイルを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db"></label>
             <label class="folder-label">📂 フォルダーを選択<input type="file" class="folder-input-elem" webkitdirectory directory multiple></label>
         </div>
-        <div class="ios-note">💡 <b>iPhone・iPadでご利用の場合:</b><br>「ファイルを選択」からファイルアプリ内の `.sqlite` や `.db` ファイルを選択してください。</div>
+        <div class="ios-note">
+            📱 <b>iPhone / iPad をご利用の方へ:</b><br>
+            iOSの制限により「フォルダーを選択」はご利用いただけません。緑の<b>「📁 ファイルを選択」</b>ボタンから、ファイルアプリ内の <code>.sqlite</code> ファイルを直接（複数一括選択可）お選びください。
+        </div>
+    </div>
+
+    <!-- 進捗プログレスバーモーダル -->
+    <div id="progress-overlay">
+        <div class="progress-box">
+            <div class="progress-title" id="progress-title">データベースを解析中...</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="progress-fill"></div>
+            </div>
+            <div class="progress-text" id="progress-text">準備中...</div>
+        </div>
+    </div>
+
+    <!-- 印刷設定モーダル -->
+    <div id="print-modal">
+        <div class="modal-box">
+            <div class="modal-title">
+                <span>🖨️ 印刷 / PDF出力設定</span>
+                <span style="cursor:pointer;" onclick="closePrintModal()">✕</span>
+            </div>
+            
+            <div class="option-group">
+                <span class="option-label">表示フォーマット（印刷レイアウト）</span>
+                <select id="opt-format" class="styled-select">
+                    <option value="bubble">💬 吹き出し形式（LINEアプリ風）</option>
+                    <option value="backup">📄 公式LINEバックアップ風（テキスト形式）</option>
+                </select>
+            </div>
+
+            <div class="option-group">
+                <span class="option-label">表示要素のON/OFF</span>
+                <label class="checkbox-label"><input type="checkbox" id="opt-header" checked> 公式バックアップ風ヘッダー（[LINE] ○○とのトーク履歴）</label>
+                <label class="checkbox-label"><input type="checkbox" id="opt-date" checked> 日付区切りを表示</label>
+                <label class="checkbox-label"><input type="checkbox" id="opt-time" checked> 送信時刻を表示</label>
+                <label class="checkbox-label"><input type="checkbox" id="opt-sender" checked> 送信者名・アバターを表示</label>
+            </div>
+
+            <div class="option-group">
+                <span class="option-label">対象メッセージの選択</span>
+                <select id="opt-target" class="styled-select">
+                    <option value="all">すべてのメッセージ（自分＋相手）</option>
+                    <option value="other">相手のメッセージのみ</option>
+                    <option value="me">自分のメッセージのみ</option>
+                </select>
+            </div>
+
+            <div class="option-group">
+                <span class="option-label">デザイン・カラー（吹き出し形式時）</span>
+                <select id="opt-color" class="styled-select">
+                    <option value="color">LINEカラー（背景色・緑吹き出しあり）</option>
+                    <option value="mono">白黒・エコ印刷（枠線のみ・インク節約）</option>
+                </select>
+            </div>
+
+            <div class="option-group">
+                <span class="option-label">文字サイズ</span>
+                <select id="opt-size" class="styled-select">
+                    <option value="normal">標準</option>
+                    <option value="large">大きめ</option>
+                    <option value="small">小さめ</option>
+                </select>
+            </div>
+
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closePrintModal()">キャンセル</button>
+                <button class="btn-exec-print" onclick="executePrint()">印刷を実行</button>
+            </div>
+        </div>
     </div>
 
     <div id="app-container">
@@ -170,14 +287,15 @@
                     <div id="chat-header-info">情報</div>
                 </div>
                 <div class="chat-header-actions">
-                    <div class="msg-search-wrap" style="width: 140px;">
+                    <div class="msg-search-wrap" style="width: 130px;">
                         <input type="text" id="msg-search" class="styled-input" placeholder="💬 検索..." oninput="filterMessages(this.value)">
                     </div>
-                    <button class="btn-print" onclick="window.print()">🖨️ 印刷</button>
+                    <button class="btn-print" onclick="openPrintModal()">🖨️ 印刷設定</button>
                 </div>
             </div>
             <div id="chat-view">
                 <div id="empty-state">左のリストから対象のトークを選択してください</div>
+                <div id="backup-header-text"></div>
             </div>
         </div>
     </div>
@@ -206,13 +324,24 @@
 
         function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
 
+        function showProgress(show, title = '', percent = 0, text = '') {
+            const overlay = document.getElementById('progress-overlay');
+            if (show) {
+                overlay.style.display = 'flex';
+                document.getElementById('progress-title').innerText = title;
+                document.getElementById('progress-fill').style.width = percent + '%';
+                document.getElementById('progress-text').innerText = text;
+            } else {
+                overlay.style.display = 'none';
+            }
+        }
+
         const dropZone = document.getElementById('drop-zone');
         window.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
         window.addEventListener('dragleave', e => { if (e.clientX === 0 && e.clientY === 0) dropZone.classList.remove('dragover'); });
         window.addEventListener('drop', async e => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
-            updateStatus('解析中...');
             const files = await getFilesFromDataTransfer(e.dataTransfer);
             if (files.length > 0) processFiles(files);
         });
@@ -281,13 +410,13 @@
         async function processFiles(files) {
             if (!SQL) return;
             const candidateFiles = files.filter(isCandidateDbFile);
-            updateStatus(`スキャン中: DB候補 ${candidateFiles.length} 件を検証...`);
-
+            
             if (candidateFiles.length === 0) {
                 alert('LINEデータベース（.sqlite / .db）が見つかりませんでした。');
-                updateStatus('エラー: 対象データベース未検出');
                 return;
             }
+
+            showProgress(true, 'ファイルを検証中...', 0, `0 / ${candidateFiles.length} 件`);
 
             const fileFilterSelect = document.getElementById('file-filter');
             let validDbCount = 0;
@@ -298,8 +427,11 @@
                 const fileId = 'file_' + fileCounter;
                 const displayLabel = f.webkitRelativePath || f.fullPath || f.name;
 
+                const percent = Math.round(((i + 1) / candidateFiles.length) * 100);
+                showProgress(true, 'データベースを解析中...', percent, `[${i + 1}/${candidateFiles.length}] ${f.name}`);
+                await new Promise(r => setTimeout(r, 10));
+
                 try {
-                    updateStatus(`[${i + 1}/${candidateFiles.length}] 解析中: ${f.name}`);
                     const slice = await f.slice(0, 16).arrayBuffer();
                     if (!isSqliteFileHeader(slice)) continue;
 
@@ -325,6 +457,8 @@
                     console.warn("スキップ:", f.name, err);
                 }
             }
+
+            showProgress(false);
 
             if (validDbCount === 0 && allChatRooms.length === 0) {
                 alert('有効なLINEデータベースが見つかりませんでした。');
@@ -499,7 +633,7 @@
         }
 
         async function loadMessagesOnDemand(chatItem) {
-            updateStatus(`読込中... (${chatItem.name})`);
+            showProgress(true, 'メッセージ読込中...', 50, `${chatItem.name}`);
             const fileObj = fileMap[chatItem.fileId];
             if (!fileObj) return;
 
@@ -527,7 +661,10 @@
                 db.close();
                 db = null;
 
-                if (!res || !res.values) return;
+                if (!res || !res.values) {
+                    showProgress(false);
+                    return;
+                }
 
                 rawMessages = res.values.map(r => {
                     const rawText = r[0] || '';
@@ -560,21 +697,23 @@
                 document.getElementById('chat-header-info').innerText = `${chatItem.count}件のメッセージ`;
                 document.getElementById('msg-search').value = '';
 
+                // 公式バックアップ形式用のヘッダー文章を初期生成
+                const now = new Date();
+                const nowStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${formatTime(now)}`;
+                document.getElementById('backup-header-text').innerText = `[LINE] ${chatItem.name}とのトーク履歴\n保存日時：${nowStr}\n`;
+
                 renderMessagesUI(rawMessages);
-                
-                // 📱 スマホ用: メッセージ表示画面に切り替え
                 document.body.classList.add('show-chat');
+                showProgress(false);
 
             } catch (err) {
+                showProgress(false);
                 alert('メッセージ読み込みエラー: ' + err.message);
                 updateStatus('エラー: ' + err.message);
             }
         }
 
-        // 📱 スマホ用: トーク一覧に戻る
-        function backToList() {
-            document.body.classList.remove('show-chat');
-        }
+        function backToList() { document.body.classList.remove('show-chat'); }
 
         function filterMessages(query) {
             const q = query.toLowerCase().trim();
@@ -621,8 +760,8 @@
                     <div class="msg-content">
                         <div class="msg-sender-name">${escapeHtml(m.senderName)}</div>
                         <div class="msg-body-wrap">
-                            <div class="bubble">${displayText}</div>
                             <div class="msg-time">${m.timeStr}</div>
+                            <div class="bubble">${displayText}</div>
                         </div>
                     </div>
                 `;
@@ -633,6 +772,46 @@
             view.scrollTop = view.scrollHeight;
         }
 
+        /* 🖨️ 印刷設定関連関数 */
+        function openPrintModal() { document.getElementById('print-modal').style.display = 'flex'; }
+        function closePrintModal() { document.getElementById('print-modal').style.display = 'none'; }
+
+        function executePrint() {
+            // クラスのリセット
+            document.body.classList.remove('hide-date', 'hide-time', 'hide-sender', 'hide-me', 'hide-other', 'monochrome-print', 'font-large', 'font-small', 'backup-format');
+            document.getElementById('backup-header-text').style.display = 'none';
+
+            // 1. フォーマット（吹き出し vs 公式バックアップ風）
+            const fmt = document.getElementById('opt-format').value;
+            if (fmt === 'backup') {
+                document.body.classList.add('backup-format');
+                if (document.getElementById('opt-header').checked) {
+                    document.getElementById('backup-header-text').style.display = 'block';
+                }
+            }
+
+            // 2. ON/OFF項目の適用
+            if (!document.getElementById('opt-date').checked) document.body.classList.add('hide-date');
+            if (!document.getElementById('opt-time').checked) document.body.classList.add('hide-time');
+            if (!document.getElementById('opt-sender').checked) document.body.classList.add('hide-sender');
+
+            // 3. 対象範囲の適用
+            const target = document.getElementById('opt-target').value;
+            if (target === 'me') document.body.classList.add('hide-other');
+            if (target === 'other') document.body.classList.add('hide-me');
+
+            // 4. カラー設定
+            if (document.getElementById('opt-color').value === 'mono') document.body.classList.add('monochrome-print');
+
+            // 5. 文字サイズ
+            const size = document.getElementById('opt-size').value;
+            if (size === 'large') document.body.classList.add('font-large');
+            if (size === 'small') document.body.classList.add('font-small');
+
+            closePrintModal();
+            setTimeout(() => { window.print(); }, 200);
+        }
+
         function parseTimestamp(ts) {
             if (!ts) return null;
             let num = Number(ts);
@@ -641,7 +820,11 @@
             if (num > 100000000) return new Date(num * 1000);
             return new Date(num);
         }
-        function formatDateHeader(d) { return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; }
+        function formatDateHeader(d) { 
+            const days = ['日', '月', '火', '水', '木', '金', '土'];
+            return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`; 
+        }
+        function formatDate(d) { return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`; }
         function formatTime(d) { return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
         function escapeHtml(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
         function escapeRegExp(string) { return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }

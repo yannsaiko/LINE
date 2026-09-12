@@ -89,7 +89,6 @@
         .msg-row.other { align-self: flex-start; }
         .msg-row.me { align-self: flex-end; flex-direction: row-reverse; }
 
-        /* ☑ メッセージ選択チェックボックス */
         .msg-select-check { width: 18px; height: 18px; margin-top: 8px; cursor: pointer; flex-shrink: 0; accent-color: #06c755; }
 
         .msg-avatar { width: 32px; height: 32px; border-radius: 50%; background: #7d8b99; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; flex-shrink: 0; }
@@ -128,11 +127,9 @@
         .btn-cancel { background: #e2e8f0; color: #4a5568; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
         .btn-exec-print { background: #06c755; color: white; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
 
-        /* 🖨️ 印刷用メディアクエリ */
+        /* 🖨️ 印刷用CSS */
         @media print {
-            @page {
-                margin: 12mm; /* URLやページ番号などのブラウザ標準ヘッダー・フッターを消去 */
-            }
+            @page { margin: 12mm; }
             header, #sidebar, .chat-header-actions, .btn-back, #status-bar, #print-modal, #progress-overlay, #drop-zone, .msg-tools, .search-results-dropdown, .msg-select-check {
                 display: none !important;
             }
@@ -161,7 +158,6 @@
             body.print-hide-masked .is-mosaic { display: none !important; }
             body.print-hide-masked .is-hidden-msg { display: none !important; }
 
-            /* 🎯 選択したメッセージのみ印刷 */
             body.print-selected-only .msg-row:not(.is-selected-for-print) {
                 display: none !important;
             }
@@ -180,7 +176,6 @@
                 print-color-adjust: exact !important;
             }
 
-            /* 📄 公式LINEテキストバックアップ印刷モード */
             body.print-text-mode #messages-container { display: none !important; }
             body.print-text-mode #official-text-print-view {
                 display: block !important;
@@ -216,7 +211,7 @@
         <h2>ファイルまたはフォルダーを選択</h2>
         <p style="margin-top:8px; color:#666; font-size:13px;">`Line.sqlite` 、LINEの `.txt` バックアップ、または抽出フォルダー全体を読み込めます</p>
         <div class="file-inputs">
-            <label>📁 ファイル/ZIPを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip,.txt"></label>
+            <label>📁 ファイル/ZIPを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.sqlite3,.zip,.txt"></label>
             <label class="folder-label">📂 フォルダーを選択<input type="file" class="folder-input-elem" webkitdirectory directory multiple></label>
         </div>
         <div class="ios-warning-box">
@@ -241,7 +236,7 @@
         <div id="sidebar">
             <div class="sidebar-section">
                 <div class="add-files-bar">
-                    <label class="btn-small">＋ 追加ファイル/ZIP<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip,.txt" style="display:none;"></label>
+                    <label class="btn-small">＋ 追加ファイル/ZIP<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.sqlite3,.zip,.txt" style="display:none;"></label>
                     <label class="btn-small">＋ 追加フォルダー<input type="file" class="folder-input-elem" webkitdirectory directory multiple style="display:none;"></label>
                 </div>
                 <div>
@@ -350,6 +345,10 @@
         let rawMessages = [];
         let fileCounter = 0;
 
+        // 🌐 フォルダー全体で共有するグローバル名前・チャット辞書
+        let globalUserMap = {};
+        let globalChatMap = {};
+
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 updateStatus('SQL.js Engine 初期化中...');
@@ -454,7 +453,7 @@
             const candidateFiles = files.filter(f => {
                 const name = f.name.toLowerCase();
                 const ext = name.split('.').pop();
-                return ['sqlite', 'db', 'sqlite3', 'txt', 'zip'].includes(ext) || name.includes('line.sqlite');
+                return ['sqlite', 'db', 'sqlite3', 'txt', 'zip'].includes(ext) || name.includes('line') || name.includes('talk');
             });
 
             if (candidateFiles.length === 0) {
@@ -470,6 +469,23 @@
             let validCount = 0;
             const fileFilterSelect = document.getElementById('file-filter');
 
+            // 🛠️ フェーズ1: フォルダ内の全DBから事前に名前辞書（contacts, ZUSER等）を抽出・グローバル登録
+            if (SQL) {
+                for (const f of candidateFiles) {
+                    if (f.name.toLowerCase().endsWith('.txt') || f.size === 0) continue;
+                    try {
+                        const buf = await f.arrayBuffer();
+                        const db = new SQL.Database(new Uint8Array(buf));
+                        const sch = detectSchema(db);
+                        const { userMap, chatMap } = loadDictionaries(db, sch);
+                        Object.assign(globalUserMap, userMap);
+                        Object.assign(globalChatMap, chatMap);
+                        db.close();
+                    } catch(e){}
+                }
+            }
+
+            // 🛠️ フェーズ2: トーク履歴本体の解析処理
             for (let i = 0; i < candidateFiles.length; i++) {
                 const f = candidateFiles[i];
                 if (f.size === 0) continue;
@@ -478,14 +494,14 @@
                 const label = f.webkitRelativePath || f.name;
 
                 if (fname.endsWith('.txt')) {
-                    setProgressBar(true, 'テキスト形式トークの解析中...', 50, f.name);
+                    setProgressBar(true, 'テキスト形式トークの解析中...', Math.round((i/candidateFiles.length)*100), f.name);
                     await yieldToUI(20);
                     const res = await parseLineTextFile(f, label, fileFilterSelect);
                     if (res.success) validCount++;
                     else logs.push(`❌ ${f.name}: ${res.reason}`);
                 } 
                 else if (fname.endsWith('.zip')) {
-                    setProgressBar(true, 'ZIPを展開中...', 30, f.name);
+                    setProgressBar(true, 'ZIPを展開中...', Math.round((i/candidateFiles.length)*100), f.name);
                     await yieldToUI(20);
                     try {
                         const zip = await JSZip.loadAsync(f);
@@ -509,7 +525,7 @@
                     }
                 } 
                 else {
-                    setProgressBar(true, 'データベース解析中...', 50, f.name);
+                    setProgressBar(true, 'データベース解析中...', Math.round((i/candidateFiles.length)*100), f.name);
                     await yieldToUI(20);
                     const res = await parseSingleDatabase(f, label, fileFilterSelect);
                     if (res.success) validCount++;
@@ -532,11 +548,12 @@
             updateStatus(`解析完了: ${allChatRooms.length} 件のトークを表示可能`);
         }
 
+        /* 🛠️ LINEテキスト履歴 (.txt) パース処理の抜本強化 */
         async function parseLineTextFile(file, displayLabel, fileFilterSelect) {
             try {
                 const text = await file.text();
                 const lines = text.split(/\r?\n/);
-                let title = file.name.replace(/\.txt$/i, '').replace(/^\[LINE\]\s*/i, '').replace(/とのトーク履歴$/i, '').replace(/トーク履歴/i, '');
+                let title = file.name.replace(/\.txt$/i, '').replace(/^\[LINE\]\s*/i, '').replace(/とのトーク履歴$/i, '').replace(/トーク履歴/i, '').trim();
                 let messages = [];
                 let currentDate = '';
                 let currentMsg = null;
@@ -545,23 +562,29 @@
                     const line = lines[i].trim();
                     if (!line) continue;
 
+                    // ヘッダー判定
                     if (i === 0 || line.startsWith('[LINE]')) {
                         const m = line.match(/\[LINE\]\s*(.*?)とのトーク履歴/) || line.match(/\[LINE\]\s*(.*)/);
                         if (m && m[1]) title = m[1].replace(/とのトーク履歴$/, '').trim();
                     }
-                    if (line.startsWith('保存日時：') || line.startsWith('Saved:')) continue;
+                    if (/^(保存日時|Saved|日時)：/i.test(line)) continue;
 
-                    const dateMatch = line.match(/^(\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2}(?:\([日月火水木金土]\))?)/);
+                    // 日付ヘッダー判定 (例: 2023/05/12(金), 2023.05.12, 2023-05-12)
+                    const dateMatch = line.match(/^(\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2}(?:\([日月火水木金土]\)|[日月火水木金土]曜日)?)/);
                     if (dateMatch && !line.includes('\t')) {
                         currentDate = dateMatch[1];
                         continue;
                     }
 
-                    const msgMatch = line.match(/^(\d{1,2}:\d{2})\t([^\t]+)\t(.*)/);
+                    // メッセージ行判定 (タブ区切りまたはスペース区切り, 12時間/24時間制対応)
+                    // 例: "10:15	名前	本文", "午前10:15	名前	本文", "午後2:30	名前	本文"
+                    const msgMatch = line.match(/^((?:午前|午後|AM|PM\s*)?\d{1,2}:\d{2}(?:\s*(?:AM|PM))?)\t([^\t]+)\t(.*)/i) ||
+                                     line.match(/^((?:午前|午後|AM|PM\s*)?\d{1,2}:\d{2})\s+([^\s]+)\s+(.*)/i);
+
                     if (msgMatch) {
                         if (currentMsg) messages.push(currentMsg);
-                        const timeStr = msgMatch[1];
-                        const sender = msgMatch[2];
+                        const timeStr = msgMatch[1].trim();
+                        const sender = msgMatch[2].trim();
                         const msgText = msgMatch[3];
                         const isMe = (sender === '自分' || sender === 'Me');
 
@@ -577,6 +600,7 @@
                         continue;
                     }
 
+                    // 複数行メッセージの継続行
                     if (currentMsg) {
                         currentMsg.text += '\n' + line;
                     }
@@ -613,7 +637,7 @@
                 db = new SQL.Database(new Uint8Array(buf));
 
                 const schema = detectSchema(db);
-                if (!schema.msgTable) return { success: false, reason: 'LINEテーブル未検出' };
+                if (!schema.msgTable) return { success: false, reason: 'LINEメッセージテーブル未検出' };
 
                 fileCounter++;
                 const fileId = 'file_' + fileCounter;
@@ -628,7 +652,11 @@
                 fileMap[fileId].userMap = userMap;
                 fileMap[fileId].chatMap = chatMap;
 
-                const rooms = fetchChatRooms(db, schema, userMap, chatMap, fileId, displayLabel);
+                // グローバル辞書へマージ
+                Object.assign(globalUserMap, userMap);
+                Object.assign(globalChatMap, chatMap);
+
+                const rooms = fetchChatRooms(db, schema, globalUserMap, globalChatMap, fileId, displayLabel);
                 allChatRooms.push(...rooms);
 
                 return { success: true };
@@ -639,45 +667,49 @@
             }
         }
 
-        /* 🔍 スキーマ検出（最新構造拡張版） */
+        /* 🔍 スキーマ検出（最新iOS/Android拡張対応） */
         function detectSchema(db) {
             let tables = [];
             try {
                 tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'")[0]?.values.map(r => r[0]) || [];
             } catch(e) { return {}; }
 
-            if (tables.includes('ZMESSAGE')) {
-                const cols = db.exec("PRAGMA table_info(ZMESSAGE)")[0].values.map(c => c[1]);
+            // iOS (Line.sqlite / ZMESSAGE 等)
+            const iosMsgTable = tables.find(t => /^ZMESSAGE$/i.test(t) || /^ZSTOREDMESSAGE$/i.test(t));
+            if (iosMsgTable) {
+                const cols = db.exec(`PRAGMA table_info("${iosMsgTable}")`)[0].values.map(c => c[1]);
                 return {
-                    type: 'iOS', msgTable: 'ZMESSAGE',
-                    chatCol: cols.find(c => /^ZCHAT$/i.test(c)) || 'ZCHAT',
-                    textCol: cols.find(c => /^ZTEXT$/i.test(c)) || 'ZTEXT',
-                    timeCol: cols.find(c => /^ZCREATEDTIME$/i.test(c)) || 'ZCREATEDTIME',
-                    isMeCol: cols.find(c => /^ZISFROMME$/i.test(c)) || null,
-                    senderCol: cols.find(c => /^ZSENDER$/i.test(c)) || 'ZSENDER',
-                    typeCol: cols.find(c => /^ZCONTENTTYPE$/i.test(c)) || 'ZCONTENTTYPE',
-                    userTable: tables.includes('ZUSER') ? 'ZUSER' : (tables.includes('ZUSERHEADER') ? 'ZUSERHEADER' : null),
-                    chatTable: tables.includes('ZCHAT') ? 'ZCHAT' : null
+                    type: 'iOS', msgTable: iosMsgTable,
+                    chatCol: cols.find(c => /^ZCHAT$/i.test(c) || /^ZCHATID$/i.test(c)) || 'ZCHAT',
+                    textCol: cols.find(c => /^ZTEXT$/i.test(c) || /^ZBODY$/i.test(c)) || 'ZTEXT',
+                    timeCol: cols.find(c => /^ZCREATEDTIME$/i.test(c) || /^ZDATE$/i.test(c)) || 'ZCREATEDTIME',
+                    isMeCol: cols.find(c => /^ZISFROMME$/i.test(c) || /^ZIS_ME$/i.test(c)) || null,
+                    senderCol: cols.find(c => /^ZSENDER$/i.test(c) || /^ZSENDERID$/i.test(c)) || 'ZSENDER',
+                    typeCol: cols.find(c => /^ZCONTENTTYPE$/i.test(c) || /^ZTYPE$/i.test(c)) || 'ZCONTENTTYPE',
+                    userTable: tables.find(t => /^ZUSER$/i.test(t) || /^ZUSERHEADER$/i.test(t) || /^ZCONTACT$/i.test(t)),
+                    chatTable: tables.find(t => /^ZCHAT$/i.test(t))
                 };
             }
+
+            // Android (naver_line / chat_history 等)
             if (tables.includes('chat_history')) {
                 const cols = db.exec("PRAGMA table_info(chat_history)")[0].values.map(c => c[1]);
                 return {
                     type: 'Android', msgTable: 'chat_history',
                     chatCol: cols.find(c => /chat_id/i.test(c)) || 'chat_id',
-                    textCol: cols.find(c => /content/i.test(c)) || 'content',
-                    timeCol: cols.find(c => /created_time/i.test(c)) || 'created_time',
+                    textCol: cols.find(c => /content|message/i.test(c)) || 'content',
+                    timeCol: cols.find(c => /created_time|created_at/i.test(c)) || 'created_time',
                     isMeCol: cols.find(c => /is_sent|status/i.test(c)) || null,
-                    senderCol: cols.find(c => /from_mid/i.test(c)) || 'from_mid',
-                    typeCol: cols.find(c => /type/i.test(c)) || 'type',
-                    userTable: tables.includes('contacts') ? 'contacts' : (tables.includes('friends') ? 'friends' : null),
-                    chatTable: tables.includes('chat') ? 'chat' : (tables.includes('groups') ? 'groups' : null)
+                    senderCol: cols.find(c => /from_mid|sender_mid|writer_mid/i.test(c)) || 'from_mid',
+                    typeCol: cols.find(c => /type|contentType/i.test(c)) || 'type',
+                    userTable: tables.find(t => /contacts|friends/i.test(t)),
+                    chatTable: tables.find(t => /^chat$|^groups$/i.test(t))
                 };
             }
             return {};
         }
 
-        /* 📖 辞書作成（全名前カラム網羅＆二重マッピング対応） */
+        /* 📖 辞書作成 */
         function loadDictionaries(db, sch) {
             let userMap = {}, chatMap = {};
 
@@ -837,7 +869,6 @@
                 const buf = await fileObj.file.arrayBuffer();
                 db = new SQL.Database(new Uint8Array(buf));
                 const sch = fileObj.schema;
-                const userMap = fileObj.userMap || {};
 
                 const safeId = String(chatItem.id).replace(/'/g, "''");
                 const query = `
@@ -880,7 +911,7 @@
                         else text = '[メッセージ (スタンプ/写真/システム)]';
                     }
 
-                    let senderName = isMe ? '自分' : (userMap[senderId] || chatItem.name || '相手');
+                    let senderName = isMe ? '自分' : (globalUserMap[senderId] || fileObj.userMap?.[senderId] || chatItem.name || '相手');
                     const dateObj = parseTimestamp(rawTime);
 
                     return {
@@ -1144,18 +1175,35 @@
             window.print();
         }
 
-        /* ⏰ タイムスタンプ解析 */
+        /* ⏰ タイムスタンプ解析の精度向上 */
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;
+            
+            // ISO文字列や日付文字列の場合のパース
+            if (typeof ts === 'string' && (ts.includes('-') || ts.includes('/')) && isNaN(Number(ts))) {
+                const parsedDate = new Date(ts);
+                if (!isNaN(parsedDate.getTime())) return parsedDate;
+            }
+
             let num = Number(ts);
             if (isNaN(num) || num === 0) return null;
 
+            // Unix Milliseconds (13桁: 2001-2033年)
             if (num > 1000000000000 && num < 2000000000000) return new Date(num);
+            
+            // Unix Seconds (10桁: 2001-2033年)
             if (num > 1000000000 && num < 2000000000) return new Date(num * 1000);
 
+            // Apple CoreData Epoch (2001-01-01 00:00:00 UTC = 978307200000 ms)
             const appleEpochMs = 978307200000;
+            
+            // Apple CoreData Microseconds / Nanoseconds (16~19桁)
             if (num > 100000000000000000) return new Date(appleEpochMs + (num / 1000000));
+            
+            // Apple CoreData Milliseconds (12~15桁)
             if (num > 100000000000) return new Date(appleEpochMs + (num / 1000));
+            
+            // Apple CoreData Seconds (8~10桁)
             if (num > 100000000 && num <= 1000000000) return new Date(appleEpochMs + (num * 1000));
 
             return new Date(num);

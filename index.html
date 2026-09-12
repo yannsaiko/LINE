@@ -24,11 +24,11 @@
         .ios-note { margin-top: 15px; font-size: 12px; color: #444; line-height: 1.5; background: #f0fdf4; padding: 10px 14px; border-radius: 8px; border: 1px solid #bbf7d0; max-width: 500px; text-align: left; }
         
         /* 進捗プログレスバーモーダル */
-        #progress-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        #progress-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
         .progress-box { background: white; padding: 24px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); text-align: center; }
-        .progress-title { font-size: 16px; font-weight: bold; margin-bottom: 12px; }
+        .progress-title { font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #222; }
         .progress-bar-container { width: 100%; background: #eee; height: 12px; border-radius: 6px; overflow: hidden; margin: 12px 0; }
-        .progress-bar-fill { height: 100%; background: #06c755; width: 0%; transition: width 0.2s ease; }
+        .progress-bar-fill { height: 100%; background: #06c755; width: 0%; transition: width 0.1s linear; }
         .progress-text { font-size: 13px; color: #666; word-break: break-all; }
 
         #app-container { flex: 1; display: none; height: calc(100vh - 50px); overflow: hidden; position: relative; }
@@ -40,7 +40,7 @@
         select.styled-select, input.styled-input { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; background: white; appearance: none; -webkit-appearance: none; }
         
         .add-files-bar { display: flex; gap: 6px; }
-        .btn-small { background: #edf2f7; color: #2d3748; border: 1px solid #cbd5e0; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; flex: 1; text-align: center; display: inline-block; }
+        .btn-small { background: #edf2f7; color: #2d3748; border: 1px solid #cbd5e0; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
         .btn-small:active { background: #e2e8f0; }
         .btn-print { background: #06c755; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
         .btn-print:active { background: #05b34c; }
@@ -77,17 +77,30 @@
         .msg-row.me { align-self: flex-end; flex-direction: row-reverse; }
         
         .msg-avatar { width: 32px; height: 32px; border-radius: 50%; background: #7d8b99; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; flex-shrink: 0; }
-        .msg-content { display: flex; flex-direction: column; min-width: 0; }
-        .msg-sender-name { font-size: 11px; color: #444; margin-bottom: 2px; font-weight: 500; }
-        .msg-row.me .msg-sender-name { text-align: right; }
+        .msg-content { display: flex; flex-direction: column; min-width: 0; width: 100%; }
         
+        .msg-header-line { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 2px; }
+        .msg-sender-name { font-size: 11px; color: #444; font-weight: 500; }
+        .msg-row.me .msg-header-line { flex-direction: row-reverse; }
+        
+        /* 🙈 モザイク & ❌ 非表示用ツールボタン */
+        .msg-tools { display: flex; gap: 4px; opacity: 0.3; transition: opacity 0.2s; }
+        .msg-row:hover .msg-tools, .msg-tools:active { opacity: 1; }
+        .btn-msg-tool { background: rgba(0,0,0,0.06); border: none; border-radius: 4px; padding: 2px 5px; font-size: 10px; cursor: pointer; color: #444; font-weight: 500; }
+        .btn-msg-tool:hover { background: rgba(0,0,0,0.15); }
+        .btn-msg-tool.active-mosaic { background: #ed8936; color: white; }
+
         .msg-body-wrap { display: flex; align-items: flex-end; gap: 4px; }
         .msg-row.me .msg-body-wrap { flex-direction: row-reverse; }
         
-        .bubble { background: white; padding: 8px 12px; border-radius: 14px; font-size: 14px; line-height: 1.4; word-break: break-word; white-space: pre-wrap; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .bubble { background: white; padding: 8px 12px; border-radius: 14px; font-size: 14px; line-height: 1.4; word-break: break-word; white-space: pre-wrap; box-shadow: 0 1px 2px rgba(0,0,0,0.1); transition: filter 0.2s; }
         .msg-row.me .bubble { background: #85e249; color: #000; }
         .msg-time { font-size: 10px; color: rgba(0,0,0,0.6); flex-shrink: 0; }
         
+        /* モザイク・非表示適用クラス */
+        .bubble.is-mosaic { filter: blur(6px) !important; -webkit-filter: blur(6px) !important; user-select: none; opacity: 0.7; }
+        .msg-row.is-hidden-msg { display: none !important; }
+
         .highlight { background-color: #ffeb3b; padding: 1px 2px; border-radius: 2px; }
         #status-bar { background: #2d3748; color: white; font-size: 11px; padding: 6px 12px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -103,16 +116,18 @@
         .btn-exec-print { background: #06c755; color: white; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
 
         /* 公式バックアップ形式用スタイル設定 */
-        #backup-header-text { display: none; background: #ffffff; padding: 12px; border-bottom: 1px solid #ccc; font-family: monospace; font-size: 13px; line-height: 1.5; white-space: pre-wrap; margin-bottom: 10px; }
+        #backup-header-text { display: none; background: #ffffff; padding: 12px 0; border-bottom: 1px solid #ccc; font-family: monospace; font-size: 13px; line-height: 1.5; white-space: pre-wrap; margin-bottom: 10px; color: #000; }
 
         body.backup-format #main-content { background: #ffffff !important; }
-        body.backup-format #messages-container { gap: 4px !important; }
-        body.backup-format .msg-row { max-width: 100% !important; width: 100% !important; align-self: flex-start !important; flex-direction: row !important; }
+        body.backup-format #messages-container { gap: 6px !important; }
+        body.backup-format .msg-row, body.backup-format .msg-row.me, body.backup-format .msg-row.other { max-width: 100% !important; width: 100% !important; align-self: flex-start !important; flex-direction: row !important; justify-content: flex-start !important; }
         body.backup-format .msg-avatar { display: none !important; }
-        body.backup-format .msg-sender-name { display: inline !important; margin: 0 6px 0 0 !important; font-weight: bold; }
-        body.backup-format .msg-body-wrap { flex-direction: row !important; align-items: baseline !important; gap: 8px !important; }
-        body.backup-format .bubble { background: transparent !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; display: inline !important; word-break: break-all; }
-        body.backup-format .msg-time { display: inline !important; min-width: 45px; }
+        body.backup-format .msg-content { width: 100% !important; flex-direction: row !important; flex-wrap: wrap !important; align-items: baseline !important; gap: 6px !important; text-align: left !important; }
+        body.backup-format .msg-header-line { display: inline-flex !important; margin: 0 !important; }
+        body.backup-format .msg-sender-name, body.backup-format .msg-row.me .msg-sender-name { display: inline-block !important; margin: 0 !important; font-weight: bold !important; text-align: left !important; color: #000 !important; }
+        body.backup-format .msg-body-wrap, body.backup-format .msg-row.me .msg-body-wrap { flex-direction: row !important; align-items: baseline !important; gap: 6px !important; flex: 1 !important; }
+        body.backup-format .bubble { background: transparent !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; display: inline !important; word-break: break-all; color: #000 !important; }
+        body.backup-format .msg-time { display: inline-block !important; font-size: 12px !important; color: #555 !important; min-width: auto !important; text-align: left !important; }
         body.backup-format .date-divider { background: transparent !important; text-align: left !important; padding: 8px 0 4px 0 !important; border-bottom: 1px dashed #ccc !important; font-weight: bold; border-radius: 0 !important; width: 100%; color: #000 !important; }
 
         /* 📱 スマホ（iPhone等）用レスポンシブスタイル */
@@ -123,12 +138,12 @@
             body.show-chat #main-content { display: flex !important; }
             
             .btn-back { display: inline-flex; }
-            .msg-search-wrap { width: 100px !important; }
+            .msg-search-wrap { width: 90px !important; }
             .msg-row { max-width: 88%; }
             #drop-zone { margin: 10px; padding: 15px; }
         }
 
-        /* 🖨️ 印刷オプション動的適用のCSS */
+        /* 🖨️ 印刷オプション動的適用スタイル */
         body.hide-date .date-divider { display: none !important; }
         body.hide-time .msg-time { display: none !important; }
         body.hide-sender .msg-sender-name, body.hide-sender .msg-avatar { display: none !important; }
@@ -142,9 +157,15 @@
         body.font-small { font-size: 12px; }
         body.font-small .bubble { font-size: 12px; }
 
-        /* 🖨️ 印刷専用CSS設定 */
+        /* 印刷用ページ番号要素 */
+        #print-page-footer { display: none; }
+
+        /* 🖨️ 印刷専用CSS設定（URLなどの余白表示防止 & ページ番号出力） */
         @media print {
-            header, #sidebar, #status-bar, .file-inputs, .add-files-bar, #msg-search, .btn-print, #btn-reset, .btn-back, #print-modal, #progress-overlay {
+            @page {
+                margin: 10mm; /* ブラウザ標準のURL・日時フッター非表示 */
+            }
+            header, #sidebar, #status-bar, .file-inputs, .add-files-bar, #msg-search, .btn-print, #btn-reset, .btn-back, #print-modal, #progress-overlay, .msg-tools, .btn-small {
                 display: none !important;
             }
             body, #app-container, #main-content, #chat-view {
@@ -166,6 +187,27 @@
             .msg-row { page-break-inside: avoid; break-inside: avoid; }
             .bubble, .avatar, .msg-avatar, .date-divider { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             .date-divider { border: 1px solid #ddd; }
+
+            /* モザイク適用時印刷維持 */
+            .bubble.is-mosaic {
+                filter: blur(6px) !important;
+                -webkit-filter: blur(6px) !important;
+            }
+
+            /* 右下ページ番号印刷設定 */
+            body.show-page-number #print-page-footer {
+                display: block !important;
+                position: fixed;
+                bottom: 0;
+                right: 0;
+                font-size: 9pt;
+                color: #666;
+                background: white;
+                padding: 2px 4px;
+            }
+            body.show-page-number #print-page-footer::after {
+                content: "Page " counter(page);
+            }
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
@@ -224,6 +266,7 @@
                 <label class="checkbox-label"><input type="checkbox" id="opt-date" checked> 日付区切りを表示</label>
                 <label class="checkbox-label"><input type="checkbox" id="opt-time" checked> 送信時刻を表示</label>
                 <label class="checkbox-label"><input type="checkbox" id="opt-sender" checked> 送信者名・アバターを表示</label>
+                <label class="checkbox-label"><input type="checkbox" id="opt-page-number" checked> ページ番号を右下に表示（印刷時）</label>
             </div>
 
             <div class="option-group">
@@ -287,7 +330,8 @@
                     <div id="chat-header-info">情報</div>
                 </div>
                 <div class="chat-header-actions">
-                    <div class="msg-search-wrap" style="width: 130px;">
+                    <button class="btn-small" onclick="resetAllMasks()" title="全てのモザイク・非表示をリセット">🔄 解除</button>
+                    <div class="msg-search-wrap" style="width: 100px;">
                         <input type="text" id="msg-search" class="styled-input" placeholder="💬 検索..." oninput="filterMessages(this.value)">
                     </div>
                     <button class="btn-print" onclick="openPrintModal()">🖨️ 印刷設定</button>
@@ -301,6 +345,7 @@
     </div>
 
     <div id="status-bar">初期化中...</div>
+    <div id="print-page-footer"></div>
 
     <script>
         let SQL = null;
@@ -323,6 +368,12 @@
         });
 
         function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
+
+        function waitFrame() {
+            return new Promise(resolve => {
+                requestAnimationFrame(() => { setTimeout(resolve, 0); });
+            });
+        }
 
         function showProgress(show, title = '', percent = 0, text = '') {
             const overlay = document.getElementById('progress-overlay');
@@ -417,6 +468,7 @@
             }
 
             showProgress(true, 'ファイルを検証中...', 0, `0 / ${candidateFiles.length} 件`);
+            await waitFrame();
 
             const fileFilterSelect = document.getElementById('file-filter');
             let validDbCount = 0;
@@ -429,7 +481,7 @@
 
                 const percent = Math.round(((i + 1) / candidateFiles.length) * 100);
                 showProgress(true, 'データベースを解析中...', percent, `[${i + 1}/${candidateFiles.length}] ${f.name}`);
-                await new Promise(r => setTimeout(r, 10));
+                await waitFrame();
 
                 try {
                     const slice = await f.slice(0, 16).arrayBuffer();
@@ -456,6 +508,7 @@
                 } catch (err) {
                     console.warn("スキップ:", f.name, err);
                 }
+                await waitFrame();
             }
 
             showProgress(false);
@@ -634,6 +687,8 @@
 
         async function loadMessagesOnDemand(chatItem) {
             showProgress(true, 'メッセージ読込中...', 50, `${chatItem.name}`);
+            await waitFrame();
+
             const fileObj = fileMap[chatItem.fileId];
             if (!fileObj) return;
 
@@ -697,7 +752,6 @@
                 document.getElementById('chat-header-info').innerText = `${chatItem.count}件のメッセージ`;
                 document.getElementById('msg-search').value = '';
 
-                // 公式バックアップ形式用のヘッダー文章を初期生成
                 const now = new Date();
                 const nowStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${formatTime(now)}`;
                 document.getElementById('backup-header-text').innerText = `[LINE] ${chatItem.name}とのトーク履歴\n保存日時：${nowStr}\n`;
@@ -758,7 +812,13 @@
                 row.innerHTML = `
                     ${!m.isMe ? `<div class="msg-avatar">${escapeHtml(m.senderName.charAt(0))}</div>` : ''}
                     <div class="msg-content">
-                        <div class="msg-sender-name">${escapeHtml(m.senderName)}</div>
+                        <div class="msg-header-line">
+                            <span class="msg-sender-name">${escapeHtml(m.senderName)}</span>
+                            <div class="msg-tools">
+                                <button class="btn-msg-tool" onclick="toggleMosaic(this)" title="モザイクをかける/解除">🙈 モザイク</button>
+                                <button class="btn-msg-tool" onclick="toggleHide(this)" title="非表示にする">❌ 削除</button>
+                            </div>
+                        </div>
                         <div class="msg-body-wrap">
                             <div class="msg-time">${m.timeStr}</div>
                             <div class="bubble">${displayText}</div>
@@ -772,13 +832,32 @@
             view.scrollTop = view.scrollHeight;
         }
 
+        /* 🙈 モザイク & ❌ 非表示切り替え用関数 */
+        function toggleMosaic(btn) {
+            const msgRow = btn.closest('.msg-row');
+            const bubble = msgRow.querySelector('.bubble');
+            bubble.classList.toggle('is-mosaic');
+            btn.classList.toggle('active-mosaic');
+        }
+
+        function toggleHide(btn) {
+            const msgRow = btn.closest('.msg-row');
+            msgRow.classList.toggle('is-hidden-msg');
+        }
+
+        function resetAllMasks() {
+            document.querySelectorAll('.bubble.is-mosaic').forEach(el => el.classList.remove('is-mosaic'));
+            document.querySelectorAll('.msg-row.is-hidden-msg').forEach(el => el.classList.remove('is-hidden-msg'));
+            document.querySelectorAll('.btn-msg-tool.active-mosaic').forEach(el => el.classList.remove('active-mosaic'));
+        }
+
         /* 🖨️ 印刷設定関連関数 */
         function openPrintModal() { document.getElementById('print-modal').style.display = 'flex'; }
         function closePrintModal() { document.getElementById('print-modal').style.display = 'none'; }
 
         function executePrint() {
             // クラスのリセット
-            document.body.classList.remove('hide-date', 'hide-time', 'hide-sender', 'hide-me', 'hide-other', 'monochrome-print', 'font-large', 'font-small', 'backup-format');
+            document.body.classList.remove('hide-date', 'hide-time', 'hide-sender', 'hide-me', 'hide-other', 'monochrome-print', 'font-large', 'font-small', 'backup-format', 'show-page-number');
             document.getElementById('backup-header-text').style.display = 'none';
 
             // 1. フォーマット（吹き出し vs 公式バックアップ風）
@@ -794,6 +873,7 @@
             if (!document.getElementById('opt-date').checked) document.body.classList.add('hide-date');
             if (!document.getElementById('opt-time').checked) document.body.classList.add('hide-time');
             if (!document.getElementById('opt-sender').checked) document.body.classList.add('hide-sender');
+            if (document.getElementById('opt-page-number').checked) document.body.classList.add('show-page-number');
 
             // 3. 対象範囲の適用
             const target = document.getElementById('opt-target').value;

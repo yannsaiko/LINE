@@ -24,7 +24,7 @@
         
         .ios-warning-box { margin-top: 15px; font-size: 12px; color: #1e3a8a; line-height: 1.5; background: #eff6ff; padding: 12px 14px; border-radius: 8px; border: 1px solid #bfdbfe; max-width: 500px; text-align: left; }
 
-        /* 🔄 リアルタイムプログレスバー */
+        /* 🔄 プログレスバー */
         #progress-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; }
         .progress-card { background: white; padding: 24px; border-radius: 14px; width: 88%; max-width: 380px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); text-align: center; }
         .progress-title { font-size: 15px; font-weight: bold; color: #1a202c; margin-bottom: 8px; }
@@ -66,10 +66,10 @@
         #chat-header-info-wrap { flex: 1; min-width: 0; }
         #chat-header-title { font-weight: bold; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         #chat-header-info { font-size: 11px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .chat-header-actions { display: flex; align-items: center; gap: 6px; position: relative; }
+        .chat-header-actions { display: flex; align-items: center; gap: 6px; position: relative; flex-wrap: wrap; }
         
         .msg-search-box { display: flex; align-items: center; background: #f0f4f8; border-radius: 6px; border: 1px solid #cbd5e0; padding: 2px 4px; position: relative; }
-        .msg-search-box input { border: none; background: transparent; outline: none; font-size: 12px; width: 100px; padding: 4px; }
+        .msg-search-box input { border: none; background: transparent; outline: none; font-size: 12px; width: 90px; padding: 4px; }
         .search-count { font-size: 10px; color: #666; margin: 0 4px; white-space: nowrap; }
 
         .search-results-dropdown { display: none; position: absolute; top: 100%; right: 0; width: 280px; max-height: 240px; background: white; border: 1px solid #cbd5e0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow-y: auto; z-index: 50; margin-top: 4px; }
@@ -85,9 +85,12 @@
         #messages-container { display: flex; flex-direction: column; gap: 12px; }
         .date-divider { text-align: center; margin: 8px 0; font-size: 11px; color: #4a5568; background: rgba(255,255,255,0.75); padding: 3px 12px; border-radius: 12px; align-self: center; font-weight: bold; }
         
-        .msg-row { display: flex; gap: 8px; max-width: 85%; transition: background-color 0.5s; padding: 4px 6px; border-radius: 8px; }
+        .msg-row { display: flex; gap: 8px; max-width: 85%; transition: background-color 0.5s; padding: 4px 6px; border-radius: 8px; align-items: flex-start; }
         .msg-row.other { align-self: flex-start; }
         .msg-row.me { align-self: flex-end; flex-direction: row-reverse; }
+
+        /* ☑ メッセージ選択チェックボックス */
+        .msg-select-check { width: 18px; height: 18px; margin-top: 8px; cursor: pointer; flex-shrink: 0; accent-color: #06c755; }
 
         .msg-avatar { width: 32px; height: 32px; border-radius: 50%; background: #7d8b99; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; flex-shrink: 0; }
         .msg-content { display: flex; flex-direction: column; min-width: 0; width: 100%; }
@@ -111,9 +114,12 @@
 
         #status-bar { background: #2d3748; color: white; font-size: 11px; padding: 6px 12px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+        /* 🖨️ 公式LINEテキスト印刷専用コンテナ */
+        #official-text-print-view { display: none; }
+
         /* 🖨️ 印刷設定モーダル */
         #print-modal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-box { background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 440px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; }
+        .modal-box { background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 460px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; }
         .modal-title { font-size: 16px; font-weight: bold; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 8px; }
         .option-group { margin-bottom: 14px; }
         .option-label { font-size: 12px; font-weight: bold; color: #666; margin-bottom: 6px; display: block; }
@@ -124,7 +130,7 @@
 
         /* 🖨️ 印刷用メディアクエリ */
         @media print {
-            header, #sidebar, .chat-header-actions, .btn-back, #status-bar, #print-modal, #progress-overlay, #drop-zone, .msg-tools, .search-results-dropdown {
+            header, #sidebar, .chat-header-actions, .btn-back, #status-bar, #print-modal, #progress-overlay, #drop-zone, .msg-tools, .search-results-dropdown, .msg-select-check {
                 display: none !important;
             }
             body, #app-container, #main-content, #chat-view {
@@ -146,12 +152,19 @@
                 border: 1px solid #ddd !important;
             }
 
-            /* 動的印刷オプションクラスの適用 */
             body.print-hide-header #chat-header { display: none !important; }
             body.print-hide-time .msg-datetime-sub { display: none !important; }
             body.print-hide-sender .msg-sender-name, body.print-hide-sender .msg-avatar { display: none !important; }
             body.print-hide-masked .is-mosaic { display: none !important; }
             body.print-hide-masked .is-hidden-msg { display: none !important; }
+
+            /* 🎯 選択したメッセージのみ印刷 */
+            body.print-selected-only .msg-row:not(.is-selected-for-print) {
+                display: none !important;
+            }
+            body.print-selected-only .date-divider:not(.has-selected-msg) {
+                display: none !important;
+            }
 
             body.print-keep-bg #main-content {
                 background: #abc1ee !important;
@@ -164,59 +177,16 @@
                 print-color-adjust: exact !important;
             }
 
-            /* 📄 テキスト形式印刷モード */
-            body.print-text-mode #messages-container {
-                gap: 4px !important;
-            }
-            body.print-text-mode .date-divider {
-                background: none !important;
-                border-bottom: 1px solid #666 !important;
-                border-radius: 0 !important;
-                text-align: left !important;
-                padding: 4px 0 !important;
-                margin: 12px 0 4px 0 !important;
-                align-self: stretch !important;
-                color: #000 !important;
-            }
-            body.print-text-mode .msg-row {
+            /* 📄 公式LINEバックアップ テキスト形式印刷モード */
+            body.print-text-mode #messages-container { display: none !important; }
+            body.print-text-mode #official-text-print-view {
                 display: block !important;
-                max-width: 100% !important;
-                padding: 2px 0 !important;
-                margin: 0 !important;
-                background: transparent !important;
-                border-bottom: 1px dotted #eee !important;
-            }
-            body.print-text-mode .msg-avatar { display: none !important; }
-            body.print-text-mode .msg-content { display: block !important; width: 100% !important; }
-            body.print-text-mode .msg-header-line { display: inline !important; margin: 0 !important; }
-            body.print-text-mode .msg-sender-name {
-                font-weight: bold !important;
+                font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace, "BIZ UDゴシック", sans-serif !important;
+                font-size: 12px !important;
+                line-height: 1.5 !important;
                 color: #000 !important;
-            }
-            body.print-text-mode .msg-sender-name::after {
-                content: " : ";
-            }
-            body.print-text-mode .msg-body-wrap { display: inline !important; }
-            body.print-text-mode .bubble {
-                display: inline !important;
-                background: transparent !important;
-                border: none !important;
-                padding: 0 !important;
-                box-shadow: none !important;
-                color: #000 !important;
-                font-size: 13px !important;
-            }
-            body.print-text-mode .msg-datetime-sub {
-                display: inline-block !important;
-                float: right !important;
-                font-size: 11px !important;
-                color: #555 !important;
-                margin: 0 !important;
-            }
-            body.print-text-mode .msg-row::after {
-                content: "";
-                display: table;
-                clear: both;
+                white-space: pre-wrap !important;
+                word-break: break-all !important;
             }
         }
 
@@ -252,7 +222,7 @@
         </div>
     </div>
 
-    <!-- 🔄 リアルタイムプログレスバー -->
+    <!-- 🔄 プログレスバー -->
     <div id="progress-overlay">
         <div class="progress-card">
             <div class="progress-title" id="progress-title">データを読み込んでいます...</div>
@@ -292,7 +262,9 @@
                     <div id="chat-header-info">情報</div>
                 </div>
                 <div class="chat-header-actions">
-                    <button class="btn-small" onclick="resetAllMasks()">🔄 解除</button>
+                    <button class="btn-small" onclick="toggleSelectAll(true)">☑ 全選択</button>
+                    <button class="btn-small" onclick="toggleSelectAll(false)">☐ 全解除</button>
+                    <button class="btn-small" onclick="resetAllMasks()">🔄 ぼかし解除</button>
                     
                     <div class="msg-search-box">
                         <input type="text" id="msg-search" placeholder="💬 検索..." oninput="onSearchInput(this.value)">
@@ -305,6 +277,9 @@
             </div>
             <div id="chat-view">
                 <div id="empty-state">左のリストから対象のトークを選択してください</div>
+                <div id="messages-container"></div>
+                <!-- 📄 公式LINEテキスト形式印刷用領域 -->
+                <div id="official-text-print-view"></div>
             </div>
         </div>
     </div>
@@ -317,9 +292,18 @@
                 <span style="cursor:pointer;" onclick="closePrintModal()">✕</span>
             </div>
             <div class="option-group">
+                <span class="option-label">印刷対象メッセージの範囲</span>
+                <label class="checkbox-label">
+                    <input type="radio" name="print-scope" id="print-opt-scope-all" checked onchange="updatePrintModalState()"> すべてのメッセージを印刷
+                </label>
+                <label class="checkbox-label">
+                    <input type="radio" name="print-scope" id="print-opt-scope-selected" onchange="updatePrintModalState()"> <b style="color:#06c755;">☑ 選択したメッセージのみ印刷</b> (<span id="modal-selected-count">0</span>件選択中)
+                </label>
+            </div>
+            <div class="option-group">
                 <span class="option-label">印刷レイアウト形式</span>
                 <label class="checkbox-label">
-                    <input type="checkbox" id="print-opt-text-mode"> 📄 テキスト形式（シンプル文書表示）で印刷
+                    <input type="checkbox" id="print-opt-text-mode"> 📄 公式LINEテキストバックアップ形式（TAB区切り）で印刷
                 </label>
             </div>
             <div class="option-group">
@@ -375,7 +359,7 @@
         });
 
         function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
-        function yieldToUI(ms = 50) { return new Promise(resolve => setTimeout(resolve, ms)); }
+        function yieldToUI(ms = 30) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
         function setProgressBar(show, title = '読み込み中...', percent = 0, subText = '') {
             const overlay = document.getElementById('progress-overlay');
@@ -393,12 +377,73 @@
         const dropZone = document.getElementById('drop-zone');
         window.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
         window.addEventListener('dragleave', e => { if (e.clientX === 0 && e.clientY === 0) dropZone.classList.remove('dragover'); });
+        
+        /* 📂 ドロップ対応 */
         window.addEventListener('drop', async e => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
-            const files = Array.from(e.dataTransfer.files);
-            if (files.length > 0) processFiles(files);
+            
+            setProgressBar(true, 'フォルダーの解析中...', 5, 'アイテムを取得しています');
+            const files = await scanFilesFromDataTransfer(e.dataTransfer);
+            if (files.length > 0) {
+                await processFiles(files);
+            } else {
+                setProgressBar(false);
+                alert('解析対象のファイルが見つかりませんでした。');
+            }
         });
+
+        async function scanFilesFromDataTransfer(dataTransfer) {
+            const files = [];
+            const items = dataTransfer.items;
+            if (!items) return Array.from(dataTransfer.files || []);
+
+            const entries = [];
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.kind === 'file') {
+                    const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+                    if (entry) entries.push(entry);
+                    else {
+                        const file = item.getAsFile();
+                        if (file) files.push(file);
+                    }
+                }
+            }
+
+            for (const entry of entries) {
+                await traverseFileTree(entry, files);
+            }
+            return files;
+        }
+
+        function traverseFileTree(entry, fileList) {
+            return new Promise((resolve) => {
+                if (entry.isFile) {
+                    entry.file(f => {
+                        fileList.push(f);
+                        resolve();
+                    }, () => resolve());
+                } else if (entry.isDirectory) {
+                    const dirReader = entry.createReader();
+                    const readEntries = () => {
+                        dirReader.readEntries(async (entries) => {
+                            if (entries.length === 0) {
+                                resolve();
+                            } else {
+                                for (const childEntry of entries) {
+                                    await traverseFileTree(childEntry, fileList);
+                                }
+                                readEntries();
+                            }
+                        }, () => resolve());
+                    };
+                    readEntries();
+                } else {
+                    resolve();
+                }
+            });
+        }
 
         document.querySelectorAll('.file-input-elem').forEach(el => el.addEventListener('change', e => processFiles(Array.from(e.target.files))));
         document.querySelectorAll('.folder-input-elem').forEach(el => el.addEventListener('change', e => processFiles(Array.from(e.target.files))));
@@ -411,12 +456,13 @@
             });
 
             if (candidateFiles.length === 0) {
+                setProgressBar(false);
                 alert('フォルダー内に解析可能なトークデータ（Line.sqlite または .txt）が見つかりませんでした。');
                 return;
             }
 
-            setProgressBar(true, 'フォルダーをスキャン中...', 10, `対象: ${candidateFiles.length} 件`);
-            await yieldToUI(100);
+            setProgressBar(true, 'ファイルを読み込んでいます...', 10, `対象: ${candidateFiles.length} 件`);
+            await yieldToUI(50);
 
             let logs = [];
             let validCount = 0;
@@ -427,18 +473,18 @@
                 if (f.size === 0) continue;
 
                 const fname = f.name.toLowerCase();
-                const label = f.webkitRelativePath || f.fullPath || f.name;
+                const label = f.webkitRelativePath || f.name;
 
                 if (fname.endsWith('.txt')) {
-                    setProgressBar(true, 'テキスト形式のトークを解析中...', 50, f.name);
-                    await yieldToUI(50);
+                    setProgressBar(true, 'テキスト形式トークの解析中...', 50, f.name);
+                    await yieldToUI(20);
                     const res = await parseLineTextFile(f, label, fileFilterSelect);
                     if (res.success) validCount++;
                     else logs.push(`❌ ${f.name}: ${res.reason}`);
                 } 
                 else if (fname.endsWith('.zip')) {
                     setProgressBar(true, 'ZIPを展開中...', 30, f.name);
-                    await yieldToUI(50);
+                    await yieldToUI(20);
                     try {
                         const zip = await JSZip.loadAsync(f);
                         const zipEntries = Object.values(zip.files).filter(e => !e.dir);
@@ -457,12 +503,12 @@
                             }
                         }
                     } catch(e) {
-                        logs.push(`❌ ${f.name}: ZIPの解凍エラー (${e.message})`);
+                        logs.push(`❌ ${f.name}: ZIP解凍エラー (${e.message})`);
                     }
                 } 
                 else {
-                    setProgressBar(true, 'データベースを解析中...', 50, f.name);
-                    await yieldToUI(50);
+                    setProgressBar(true, 'データベース解析中...', 50, f.name);
+                    await yieldToUI(20);
                     const res = await parseSingleDatabase(f, label, fileFilterSelect);
                     if (res.success) validCount++;
                     else logs.push(`❌ ${f.name}: ${res.reason}`);
@@ -488,7 +534,7 @@
             try {
                 const text = await file.text();
                 const lines = text.split(/\r?\n/);
-                let title = file.name.replace(/\.txt$/i, '').replace(/^\[LINE\]\s*/i, '').replace(/とのトーク履歴$/i, '');
+                let title = file.name.replace(/\.txt$/i, '').replace(/^\[LINE\]\s*/i, '').replace(/とのトーク履歴$/i, '').replace(/トーク履歴/i, '');
                 let messages = [];
                 let currentDate = '';
                 let currentMsg = null;
@@ -497,10 +543,9 @@
                     const line = lines[i].trim();
                     if (!line) continue;
 
-                    if (i === 0 && line.startsWith('[LINE]')) {
-                        const m = line.match(/\[LINE\]\s*(.*?)とのトーク履歴/);
-                        if (m && m[1]) title = m[1];
-                        continue;
+                    if (i === 0 || line.startsWith('[LINE]')) {
+                        const m = line.match(/\[LINE\]\s*(.*?)とのトーク履歴/) || line.match(/\[LINE\]\s*(.*)/);
+                        if (m && m[1]) title = m[1].replace(/とのトーク履歴$/, '').trim();
                     }
                     if (line.startsWith('保存日時：') || line.startsWith('Saved:')) continue;
 
@@ -523,6 +568,7 @@
                             text: msgText,
                             isMe: isMe,
                             senderName: sender,
+                            timeOnlyStr: timeStr,
                             dateStr: currentDate,
                             fullDateTimeStr: currentDate ? `${currentDate} ${timeStr}` : timeStr
                         };
@@ -547,7 +593,7 @@
                 fileFilterSelect.appendChild(opt);
 
                 allChatRooms.push({
-                    fileId, displayLabel, id: fileId, name: title, count: messages.length,
+                    fileId, displayLabel, id: fileId, name: title || 'テキストトーク', count: messages.length,
                     lastTime: messages[messages.length - 1]?.fullDateTimeStr || '', isText: true
                 });
 
@@ -577,6 +623,9 @@
                 fileFilterSelect.appendChild(opt);
 
                 const { userMap, chatMap } = loadDictionaries(db, schema);
+                fileMap[fileId].userMap = userMap;
+                fileMap[fileId].chatMap = chatMap;
+
                 const rooms = fetchChatRooms(db, schema, userMap, chatMap, fileId, displayLabel);
                 allChatRooms.push(...rooms);
 
@@ -627,32 +676,47 @@
 
         function loadDictionaries(db, sch) {
             let userMap = {}, chatMap = {};
+
             if (sch.userTable) {
                 try {
                     const res = db.exec(`SELECT * FROM "${sch.userTable}"`)[0];
                     if (res) {
                         const cols = res.columns.map(c => c.toUpperCase());
                         const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID' || c === '_ID');
+                        const midIdx = cols.findIndex(c => c === 'ZMID' || c === 'MID' || c === 'MEMBER_MID');
                         const nameIdx = cols.findIndex(c => c === 'ZCUSTOMNAME' || c === 'ZNAME' || c === 'DISPLAY_NAME' || c === 'NAME');
+
                         res.values.forEach(r => {
-                            if (r[nameIdx] && pkIdx !== -1) userMap[String(r[pkIdx])] = String(r[nameIdx]);
+                            const nameVal = r[nameIdx];
+                            if (nameVal) {
+                                if (pkIdx !== -1 && r[pkIdx] !== null) userMap[String(r[pkIdx])] = String(nameVal);
+                                if (midIdx !== -1 && r[midIdx] !== null) userMap[String(r[midIdx])] = String(nameVal);
+                            }
                         });
                     }
                 } catch(e){}
             }
+
             if (sch.chatTable) {
                 try {
                     const res = db.exec(`SELECT * FROM "${sch.chatTable}"`)[0];
                     if (res) {
                         const cols = res.columns.map(c => c.toUpperCase());
                         const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID' || c === 'CHAT_ID');
+                        const midIdx = cols.findIndex(c => c === 'ZMID' || c === 'MID');
                         const nameIdx = cols.findIndex(c => c.includes('NAME') || c.includes('TITLE'));
+
                         res.values.forEach(r => {
-                            if (r[nameIdx] && pkIdx !== -1) chatMap[String(r[pkIdx])] = String(r[nameIdx]);
+                            const nameVal = r[nameIdx];
+                            if (nameVal) {
+                                if (pkIdx !== -1 && r[pkIdx] !== null) chatMap[String(r[pkIdx])] = String(nameVal);
+                                if (midIdx !== -1 && r[midIdx] !== null) chatMap[String(r[midIdx])] = String(nameVal);
+                            }
                         });
                     }
                 } catch(e){}
             }
+
             return { userMap, chatMap };
         }
 
@@ -670,9 +734,9 @@
 
             return res.values.map(r => {
                 const chatId = String(r[0]);
-                let name = chatMap[chatId] || userMap[chatId] || `トーク (${chatId})`;
+                let name = chatMap[chatId] || userMap[chatId] || `トーク部屋 (${chatId})`;
                 const dateObj = parseTimestamp(r[2]);
-                return { fileId, displayLabel, id: chatId, name, count: r[1], lastTime: dateObj ? formatDate(dateObj) : '' };
+                return { fileId, displayLabel, id: chatId, name, count: r[1], lastTime: dateObj ? formatDate(dateObj) : '日時不明' };
             });
         }
 
@@ -719,7 +783,7 @@
 
         async function loadMessagesOnDemand(chatItem) {
             setProgressBar(true, 'メッセージを取得中...', 50, chatItem.name);
-            await yieldToUI(50);
+            await yieldToUI(30);
 
             const fileObj = fileMap[chatItem.fileId];
             if (!fileObj) return;
@@ -736,7 +800,7 @@
                 const buf = await fileObj.file.arrayBuffer();
                 db = new SQL.Database(new Uint8Array(buf));
                 const sch = fileObj.schema;
-                const { userMap } = loadDictionaries(db, sch);
+                const userMap = fileObj.userMap || {};
 
                 const safeId = String(chatItem.id).replace(/'/g, "''");
                 const query = `
@@ -758,7 +822,7 @@
                 rawMessages = res.values.map((r, idx) => {
                     const rawText = r[0];
                     const isMeVal = r[1];
-                    const senderId = String(r[2] || '');
+                    const senderId = String(r[2] !== null && r[2] !== undefined ? r[2] : '');
                     const rawTime = r[3];
                     const msgType = Number(r[4]);
 
@@ -779,7 +843,7 @@
                         else text = '[メッセージ (スタンプ/写真/システム)]';
                     }
 
-                    let senderName = isMe ? '自分' : (userMap[senderId] || chatItem.name);
+                    let senderName = isMe ? '自分' : (userMap[senderId] || chatItem.name || '相手');
                     const dateObj = parseTimestamp(rawTime);
 
                     return {
@@ -787,6 +851,7 @@
                         text,
                         isMe,
                         senderName,
+                        timeOnlyStr: dateObj ? formatTime(dateObj) : '',
                         dateStr: dateObj ? formatDateHeader(dateObj) : '日付不明',
                         fullDateTimeStr: dateObj ? `${formatDate(dateObj)} ${formatTime(dateObj)}` : '日時不明'
                     };
@@ -813,15 +878,9 @@
         function backToList() { document.body.classList.remove('show-chat'); }
 
         function renderMessagesUI(messages) {
-            const view = document.getElementById('chat-view');
             document.getElementById('empty-state').style.display = 'none';
 
-            let msgContainer = document.getElementById('messages-container');
-            if (!msgContainer) {
-                msgContainer = document.createElement('div');
-                msgContainer.id = 'messages-container';
-                view.appendChild(msgContainer);
-            }
+            const msgContainer = document.getElementById('messages-container');
             msgContainer.innerHTML = '';
 
             let lastDateStr = '';
@@ -829,6 +888,7 @@
                 if (m.dateStr && m.dateStr !== lastDateStr) {
                     const dateDiv = document.createElement('div');
                     dateDiv.className = 'date-divider';
+                    dateDiv.dataset.date = m.dateStr;
                     dateDiv.innerText = m.dateStr;
                     msgContainer.appendChild(dateDiv);
                     lastDateStr = m.dateStr;
@@ -836,8 +896,11 @@
 
                 const row = document.createElement('div');
                 row.id = `msg-${m.id}`;
+                row.dataset.id = m.id;
+                row.dataset.date = m.dateStr;
                 row.className = `msg-row ${m.isMe ? 'me' : 'other'}`;
                 row.innerHTML = `
+                    <input type="checkbox" class="msg-select-check" onchange="updateSelectedCount()" title="印刷対象に選択">
                     ${!m.isMe ? `<div class="msg-avatar">${escapeHtml(m.senderName.charAt(0))}</div>` : ''}
                     <div class="msg-content">
                         <div class="msg-header-line">
@@ -856,8 +919,24 @@
                 msgContainer.appendChild(row);
             });
 
+            updateSelectedCount();
             updateStatus(`表示完了: ${activeChat.name} (${messages.length}件)`);
+            const view = document.getElementById('chat-view');
             view.scrollTop = view.scrollHeight;
+        }
+
+        /* ☑ 全選択 / 全解除 */
+        function toggleSelectAll(selectAll) {
+            document.querySelectorAll('.msg-select-check').forEach(cb => {
+                cb.checked = selectAll;
+            });
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const selected = document.querySelectorAll('.msg-select-check:checked').length;
+            const modalCount = document.getElementById('modal-selected-count');
+            if (modalCount) modalCount.innerText = selected;
         }
 
         /* 💧 ぼかし / 🙈 隠す / 🔄 一括解除 */
@@ -936,6 +1015,7 @@
                 alert('印刷対象のトークを選択してください。');
                 return;
             }
+            updateSelectedCount();
             document.getElementById('print-modal').style.display = 'flex';
         }
 
@@ -943,7 +1023,13 @@
             document.getElementById('print-modal').style.display = 'none';
         }
 
+        function updatePrintModalState() {
+            updateSelectedCount();
+        }
+
+        /* 🖨️ 印刷実行（公式LINEテキスト形式 ＆ 選択部分印刷） */
         function executePrint() {
+            const optScopeSelected = document.getElementById('print-opt-scope-selected').checked;
             const optTextMode = document.getElementById('print-opt-text-mode').checked;
             const optHeader = document.getElementById('print-opt-header').checked;
             const optTime = document.getElementById('print-opt-time').checked;
@@ -951,7 +1037,72 @@
             const optHideMasked = document.getElementById('print-opt-hide-masked').checked;
             const optBg = document.getElementById('print-opt-bg').checked;
 
+            // 選択件数チェック
+            const selectedRows = document.querySelectorAll('.msg-row .msg-select-check:checked');
+            if (optScopeSelected && selectedRows.length === 0) {
+                alert('印刷するメッセージが選択されていません。\nメッセージ横のチェックボックス（☑）を選択してください。');
+                return;
+            }
+
+            // メッセージごとの印刷フラグ設定
+            document.querySelectorAll('.msg-row').forEach(row => {
+                const isChecked = row.querySelector('.msg-select-check').checked;
+                if (isChecked) {
+                    row.classList.add('is-selected-for-print');
+                } else {
+                    row.classList.remove('is-selected-for-print');
+                }
+            });
+
+            // 日付ディバイダーの表示判定
+            document.querySelectorAll('.date-divider').forEach(div => {
+                const dateVal = div.dataset.date;
+                const hasSelected = Array.from(document.querySelectorAll(`.msg-row[data-date="${dateVal}"]`))
+                                         .some(r => !optScopeSelected || r.classList.contains('is-selected-for-print'));
+                if (hasSelected) div.classList.add('has-selected-msg');
+                else div.classList.remove('has-selected-msg');
+            });
+
+            // 📄 公式LINEテキスト形式（.txtバックアップ互換）構築
+            if (optTextMode) {
+                const textPrintContainer = document.getElementById('official-text-print-view');
+                const now = new Date();
+                const nowStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${formatTime(now)}`;
+                
+                let textLines = [];
+                if (optHeader) {
+                    textLines.push(`[LINE] ${activeChat.name}とのトーク履歴`);
+                    textLines.push(`保存日時：${nowStr}\n`);
+                }
+
+                let currentPrintedDate = '';
+
+                rawMessages.forEach(m => {
+                    const rowEl = document.getElementById(`msg-${m.id}`);
+                    if (!rowEl) return;
+
+                    // 選択絞り込みチェック
+                    if (optScopeSelected && !rowEl.classList.contains('is-selected-for-print')) return;
+                    // ぼかし/非表示マスク除外チェック
+                    if (optHideMasked && (rowEl.classList.contains('is-hidden-msg') || rowEl.querySelector('.is-mosaic'))) return;
+
+                    if (m.dateStr && m.dateStr !== currentPrintedDate) {
+                        textLines.push(`\n${m.dateStr}`);
+                        currentPrintedDate = m.dateStr;
+                    }
+
+                    const timePart = optTime ? (m.timeOnlyStr || '00:00') : '';
+                    const senderPart = optSender ? m.senderName : '';
+                    
+                    // LINE公式フォーマット: 時刻 \t 送信者 \t 本文
+                    textLines.push(`${timePart}\t${senderPart}\t${m.text}`);
+                });
+
+                textPrintContainer.innerText = textLines.join('\n');
+            }
+
             const body = document.body;
+            body.classList.toggle('print-selected-only', optScopeSelected);
             body.classList.toggle('print-text-mode', optTextMode);
             body.classList.toggle('print-hide-header', !optHeader);
             body.classList.toggle('print-hide-time', !optTime);
@@ -963,22 +1114,19 @@
             window.print();
         }
 
+        /* ⏰ タイムスタンプ解析 */
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;
             let num = Number(ts);
             if (isNaN(num) || num === 0) return null;
 
-            if (num > 1000000000000) return new Date(num);
-            if (num > 1000000000) return new Date(num * 1000);
+            if (num > 1000000000000 && num < 2000000000000) return new Date(num);
+            if (num > 1000000000 && num < 2000000000) return new Date(num * 1000);
 
-            if (num > 100000000 && num < 1000000000) {
-                const appleEpochMs = 978307200000;
-                return new Date(appleEpochMs + (num * 1000));
-            }
-            if (num > 100000000000 && num <= 1000000000000) {
-                const appleEpochMs = 978307200000;
-                return new Date(appleEpochMs + num);
-            }
+            const appleEpochMs = 978307200000;
+            if (num > 100000000000000000) return new Date(appleEpochMs + (num / 1000000));
+            if (num > 100000000000) return new Date(appleEpochMs + (num / 1000));
+            if (num > 100000000 && num <= 1000000000) return new Date(appleEpochMs + (num * 1000));
 
             return new Date(num);
         }

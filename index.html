@@ -345,7 +345,6 @@
         let rawMessages = [];
         let fileCounter = 0;
 
-        // 🌐 全ファイル間共有のグローバル辞書
         let globalUserMap = {};
         let globalChatMap = {};
 
@@ -494,7 +493,6 @@
             setProgressBar(true, '1パス目: 名前辞書を構築中...', 10, `対象: ${candidateItems.length} 件`);
             await yieldToUI(50);
 
-            // 🌟 Pass 1: すべてのデータベースを巡回してユーザー辞書(globalUserMap)を完全構築
             if (SQL) {
                 for (const item of candidateItems) {
                     const fname = item.file.name.toLowerCase();
@@ -518,7 +516,6 @@
             let validCount = 0;
             const fileFilterSelect = document.getElementById('file-filter');
 
-            // 🌟 Pass 2: 完全構築されたグローバル辞書を使って各トーク履歴を展開
             for (let i = 0; i < candidateItems.length; i++) {
                 const item = candidateItems[i];
                 const f = item.file;
@@ -694,7 +691,6 @@
             }
         }
 
-        /* 1. 🔍 スキーマ自動判定 */
         function detectSchema(db) {
             let tables = [];
             try {
@@ -749,12 +745,10 @@
             return {};
         }
 
-        /* 2. 📖 辞書ロード処理 */
         function loadDictionaries(db, sch, existingUserMap = {}) {
             let userMap = {};
             let chatMap = {};
 
-            // 👤 ユーザー辞書の構築
             if (sch.userTable) {
                 try {
                     const res = db.exec(`SELECT * FROM "${sch.userTable}"`)[0];
@@ -802,7 +796,6 @@
 
             const combinedUserMap = Object.assign({}, existingUserMap, userMap);
 
-            // 💬 トーク部屋辞書の構築
             if (sch.chatTable) {
                 try {
                     const res = db.exec(`SELECT * FROM "${sch.chatTable}"`)[0];
@@ -860,7 +853,6 @@
             return { userMap, chatMap };
         }
 
-        /* 3. 💬 トーク部屋一覧の取得（グループ/1対1誤補完の分離対策適用） */
         function fetchChatRooms(db, sch, userMap, chatMap, fileId, displayLabel) {
             if (!sch.msgTable) return [];
 
@@ -880,7 +872,6 @@
                 let name = chatMap[chatId] || userMap[chatId] || null;
                 const safeId = chatId.replace(/'/g, "''");
 
-                // 補完①: ZCHAT テーブルのセル参照による補完
                 if ((!name || name.startsWith('トーク部屋')) && sch.chatTable) {
                     try {
                         const chatRowQ = `SELECT * FROM "${sch.chatTable}" WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' OR CAST(Z_PK AS TEXT) = '${safeId}' OR CAST(ROWID AS TEXT) = '${safeId}'`;
@@ -900,7 +891,6 @@
                     } catch(e){}
                 }
 
-                // 補完②: 1対1トークのみ相手の送信者名で部屋名を補完（送信者が「1名のみ」の時に限定）
                 if (!name || name.startsWith('トーク部屋')) {
                     try {
                         const senderQuery = `
@@ -914,10 +904,7 @@
                         `;
                         const senderRes = db.exec(senderQuery)[0];
                         if (senderRes && senderRes.values) {
-                            // 自分以外の送信者のリストを作成
                             const otherSenders = senderRes.values.map(sRow => String(sRow[0]).trim()).filter(sId => sId);
-                            
-                            // 他の送信者がちょうど「1人」＝1対1トークと判定できる場合のみ適用
                             if (otherSenders.length === 1) {
                                 const targetId = otherSenders[0];
                                 if (userMap[targetId]) name = userMap[targetId];
@@ -1035,7 +1022,6 @@
                         else text = '[メッセージ (スタンプ/写真/システム)]';
                     }
 
-                    // 🌟 送信者名の判別処理を完全分離化
                     let senderName = '相手';
                     if (isMe) {
                         senderName = '自分';
@@ -1044,10 +1030,8 @@
                     } else if (fileObj.userMap?.[senderId]) {
                         senderName = fileObj.userMap[senderId];
                     } else if (senderId) {
-                        // ID自体から判別（部屋名の誤流用を防ぐ）
                         senderName = `ユーザー (${senderId.length > 6 ? senderId.slice(-4) : senderId})`;
                     } else if (chatItem.name && !chatItem.name.startsWith('トーク部屋')) {
-                        // 1対1かつID無き場合のみ最終フォールバック
                         senderName = chatItem.name;
                     }
 
@@ -1057,12 +1041,24 @@
                         id: idx,
                         text,
                         isMe,
+                        senderId,
                         senderName,
                         timeOnlyStr: dateObj ? formatTime(dateObj) : '',
                         dateStr: dateObj ? formatDateHeader(dateObj) : '日時不明',
                         fullDateTimeStr: dateObj ? `${formatDate(dateObj)} ${formatTime(dateObj)}` : '日時不明'
                     };
                 });
+
+                // 🌟 1対1トーク完全同名同期処理
+                // 自分以外の送信者が1名のみ存在する場合、トークルーム名と送信者名を同一名へ補完
+                const nonMeSenders = Array.from(new Set(rawMessages.filter(m => !m.isMe).map(m => m.senderName)));
+                if (nonMeSenders.length === 1) {
+                    const unifiedName = (chatItem.name && !chatItem.name.startsWith('トーク部屋')) ? chatItem.name : nonMeSenders[0];
+                    chatItem.name = unifiedName;
+                    rawMessages.forEach(m => {
+                        if (!m.isMe) m.senderName = unifiedName;
+                    });
+                }
 
                 displayMessagesInUI(chatItem);
                 setProgressBar(false);
@@ -1309,7 +1305,6 @@
             window.print();
         }
 
-        /* ⏰ タイムスタンプ解析 */
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;
             

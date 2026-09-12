@@ -805,7 +805,7 @@
                 let name = chatMap[chatId] || userMap[chatId] || null;
                 const safeId = chatId.replace(/'/g, "''");
 
-                // 1. ZCHAT テーブルから ZUSER 参照または ZMID 参照で相手名を検索
+                // 1. ZCHAT テーブルから ZUSER 参照または ZMID 参照で相手名を再検索
                 if (!name && sch.chatTable) {
                     try {
                         const chatRowQ = `SELECT * FROM "${sch.chatTable}" WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' OR CAST(Z_PK AS TEXT) = '${safeId}'`;
@@ -828,7 +828,7 @@
                     } catch(e){}
                 }
 
-                // 2. 自動検出: トーク内のメッセージ送信者ID (ZSENDER) から相手の名前を特定
+                // 2. トーク内のメッセージ送信者ID (ZSENDER) から相手の名前を特定
                 if (!name && sch.senderCol) {
                     try {
                         const senderQ = `

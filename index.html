@@ -215,8 +215,8 @@
             <label class="folder-label">📂 フォルダーを選択<input type="file" class="folder-input-elem" webkitdirectory directory multiple></label>
         </div>
         <div class="ios-warning-box">
-            💡 <b>ヒント:</b><br>
-            アプリから抜き出したフォルダー全体を選択・ドロップすると、名前辞書（`ZUSER` / `contacts`）と自動結合して相手の名前を正しく表示します。
+            💡 <b>名前復元ヒント:</b><br>
+            `Line.sqlite` だけでなく、抽出フォルダー全体を選択・ドロップしていただくと、内部の連絡先辞書（`ZUSER` / `contacts`）と自動照合され、トーク部屋や相手の名前が正しく復元されます。
         </div>
     </div>
 
@@ -345,7 +345,7 @@
         let rawMessages = [];
         let fileCounter = 0;
 
-        // 🌐 全フォルダー共通のグローバルユーザー・チャット情報辞書
+        // 🌐 全ファイル間共有のグローバル辞書
         let globalUserMap = {};
         let globalChatMap = {};
 
@@ -390,7 +390,7 @@
             e.preventDefault();
             dropZone.classList.remove('dragover');
             
-            setProgressBar(true, 'フォルダーの解析中...', 5, '再帰的にアイテムを取得しています');
+            setProgressBar(true, 'フォルダーの解析中...', 5, 'アイテムを取得しています');
             const fileItems = await scanFilesFromDataTransfer(e.dataTransfer);
             if (fileItems.length > 0) {
                 await processUnifiedFileList(fileItems);
@@ -491,13 +491,10 @@
                 return;
             }
 
-            setProgressBar(true, 'ファイルを読み込んでいます...', 10, `対象: ${candidateItems.length} 件`);
+            setProgressBar(true, '1パス目: 名前辞書を構築中...', 10, `対象: ${candidateItems.length} 件`);
             await yieldToUI(50);
 
-            let logs = [];
-            let validCount = 0;
-            const fileFilterSelect = document.getElementById('file-filter');
-
+            // 🌟 Pass 1: すべてのデータベースを巡回してユーザー辞書(globalUserMap)を完全構築
             if (SQL) {
                 for (const item of candidateItems) {
                     const fname = item.file.name.toLowerCase();
@@ -506,7 +503,7 @@
                         const buf = await item.file.arrayBuffer();
                         const db = new SQL.Database(new Uint8Array(buf));
                         const sch = detectSchema(db);
-                        const { userMap, chatMap } = loadDictionaries(db, sch);
+                        const { userMap, chatMap } = loadDictionaries(db, sch, globalUserMap);
                         Object.assign(globalUserMap, userMap);
                         Object.assign(globalChatMap, chatMap);
                         db.close();
@@ -514,6 +511,14 @@
                 }
             }
 
+            setProgressBar(true, '2パス目: トーク履歴の照合中...', 40, `名前データと照合しています`);
+            await yieldToUI(50);
+
+            let logs = [];
+            let validCount = 0;
+            const fileFilterSelect = document.getElementById('file-filter');
+
+            // 🌟 Pass 2: 完全構築されたグローバル辞書を使って各トーク履歴を展開
             for (let i = 0; i < candidateItems.length; i++) {
                 const item = candidateItems[i];
                 const f = item.file;
@@ -523,14 +528,14 @@
                 const label = item.path || f.name;
 
                 if (fname.endsWith('.txt')) {
-                    setProgressBar(true, 'テキスト形式トークの解析中...', Math.round((i/candidateItems.length)*100), f.name);
+                    setProgressBar(true, 'テキスト形式トークの解析中...', 40 + Math.round((i/candidateItems.length)*50), f.name);
                     await yieldToUI(20);
                     const res = await parseLineTextFile(f, label, fileFilterSelect);
                     if (res.success) validCount++;
                     else logs.push(`❌ ${f.name}: ${res.reason}`);
                 } 
                 else if (fname.endsWith('.zip')) {
-                    setProgressBar(true, 'ZIPを展開中...', Math.round((i/candidateItems.length)*100), f.name);
+                    setProgressBar(true, 'ZIPを展開中...', 40 + Math.round((i/candidateItems.length)*50), f.name);
                     await yieldToUI(20);
                     try {
                         const zip = await JSZip.loadAsync(f);
@@ -554,7 +559,7 @@
                     }
                 } 
                 else {
-                    setProgressBar(true, 'データベース解析中...', Math.round((i/candidateItems.length)*100), f.name);
+                    setProgressBar(true, 'データベース解析中...', 40 + Math.round((i/candidateItems.length)*50), f.name);
                     await yieldToUI(20);
                     const res = await parseSingleDatabase(f, label, fileFilterSelect);
                     if (res.success) validCount++;
@@ -671,7 +676,8 @@
                 opt.innerText = displayLabel;
                 fileFilterSelect.appendChild(opt);
 
-                const { userMap, chatMap } = loadDictionaries(db, schema);
+                // グローバル辞書も組み合わせて辞書を再照合
+                const { userMap, chatMap } = loadDictionaries(db, schema, globalUserMap);
                 fileMap[fileId].userMap = userMap;
                 fileMap[fileId].chatMap = chatMap;
 
@@ -689,7 +695,7 @@
             }
         }
 
-        /* 1. 🔍 スキーマ検出の修正（メッセージテーブル以外のファイルからもユーザーテーブルを特定可能にする） */
+        /* 1. 🔍 スキーマ自動判定 */
         function detectSchema(db) {
             let tables = [];
             try {
@@ -744,14 +750,16 @@
             return {};
         }
 
-        /* 2. 📖 辞書ロード処理の強化（複数キー/名前カラムの完全抽出） */
-        function loadDictionaries(db, sch) {
-            let userMap = {}, chatMap = {};
+        /* 2. 📖 辞書ロード処理（直接カラム＋セル全列のMID/IDクロス照合機能付き） */
+        function loadDictionaries(db, sch, existingUserMap = {}) {
+            let userMap = {};
+            let chatMap = {};
 
+            // 👤 ユーザー辞書の構築
             if (sch.userTable) {
                 try {
                     const res = db.exec(`SELECT * FROM "${sch.userTable}"`)[0];
-                    if (res) {
+                    if (res && res.values) {
                         const cols = res.columns.map(c => c.toUpperCase());
                         
                         const idIndices = [];
@@ -761,7 +769,7 @@
                             }
                         });
 
-                        const priorityCols = ['ZCUSTOMNAME', 'ZNAME', 'ZADDRESSBOOKNAME', 'ZPHONEBOOKNAME', 'ZFULLNAME', 'CUSTOM_NAME', 'DISPLAY_NAME', 'NAME', 'NICKNAME'];
+                        const priorityCols = ['ZCUSTOMNAME', 'ZNAME', 'ZADDRESSBOOKNAME', 'ZPHONEBOOKNAME', 'ZPHONETICKETNAME', 'ZFULLNAME', 'CUSTOM_NAME', 'DISPLAY_NAME', 'NAME', 'NICKNAME', 'ZDISPLAYNAME'];
                         const nameIndices = [];
                         priorityCols.forEach(p => {
                             const idx = cols.indexOf(p);
@@ -793,17 +801,20 @@
                 } catch(e){}
             }
 
+            const combinedUserMap = Object.assign({}, existingUserMap, userMap);
+
+            // 💬 トーク部屋辞書の構築
             if (sch.chatTable) {
                 try {
                     const res = db.exec(`SELECT * FROM "${sch.chatTable}"`)[0];
-                    if (res) {
+                    if (res && res.values) {
                         const cols = res.columns.map(c => c.toUpperCase());
                         const idIndices = [];
                         cols.forEach((c, i) => {
                             if (/Z_PK|ROWID|^ID$|_ID|ZMID|MID|CHAT_ID/i.test(c)) idIndices.push(i);
                         });
 
-                        const priorityCols = ['ZTITLE', 'ZNAME', 'TITLE', 'NAME', 'CHAT_NAME'];
+                        const priorityCols = ['ZTITLE', 'ZNAME', 'ZCUSTOMNAME', 'TITLE', 'NAME', 'CHAT_NAME'];
                         const nameIndices = [];
                         priorityCols.forEach(p => {
                             const idx = cols.indexOf(p);
@@ -815,10 +826,24 @@
 
                         res.values.forEach(r => {
                             let nameVal = null;
+                            // ① 直接の名前カラムを参照
                             for (const idx of nameIndices) {
                                 if (r[idx] !== null && r[idx] !== undefined && String(r[idx]).trim() !== '') {
                                     nameVal = String(r[idx]).trim();
                                     break;
+                                }
+                            }
+
+                            // ② 1対1トーク等で名前が直接入っていない場合、行内のMID/IDをユーザー辞書から参照
+                            if (!nameVal) {
+                                for (let i = 0; i < r.length; i++) {
+                                    if (r[i] !== null && r[i] !== undefined) {
+                                        const valStr = String(r[i]).trim();
+                                        if (valStr && combinedUserMap[valStr]) {
+                                            nameVal = combinedUserMap[valStr];
+                                            break;
+                                        }
+                                    }
                                 }
                             }
 
@@ -838,7 +863,7 @@
             return { userMap, chatMap };
         }
 
-        /* 3. 💬 トーク一覧取得の改善（送信者経由での相手名前自動補完付き） */
+        /* 3. 💬 トーク部屋一覧の取得（多角的なフォールバック補完付き） */
         function fetchChatRooms(db, sch, userMap, chatMap, fileId, displayLabel) {
             if (!sch.msgTable) return [];
 
@@ -854,12 +879,33 @@
             if (!res || !res.values) return [];
 
             return res.values.map(r => {
-                const chatId = String(r[0]);
+                const chatId = String(r[0]).trim();
                 let name = chatMap[chatId] || userMap[chatId] || null;
+                const safeId = chatId.replace(/'/g, "''");
 
+                // 補完①: ZCHAT テーブルの全セル値からユーザー辞書を照合
+                if ((!name || name.startsWith('トーク部屋')) && sch.chatTable) {
+                    try {
+                        const chatRowQ = `SELECT * FROM "${sch.chatTable}" WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' OR CAST(Z_PK AS TEXT) = '${safeId}' OR CAST(ROWID AS TEXT) = '${safeId}'`;
+                        const chatRowRes = db.exec(chatRowQ)[0];
+                        if (chatRowRes && chatRowRes.values && chatRowRes.values.length > 0) {
+                            const rowVals = chatRowRes.values[0];
+                            for (const val of rowVals) {
+                                if (val !== null && val !== undefined) {
+                                    const valStr = String(val).trim();
+                                    if (valStr && userMap[valStr]) {
+                                        name = userMap[valStr];
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    } catch(e){}
+                }
+
+                // 補完②: トーク内の送信者(ZSENDER)から相手の名前を逆引き
                 if (!name || name.startsWith('トーク部屋')) {
                     try {
-                        const safeId = chatId.replace(/'/g, "''");
                         const senderQuery = `
                             SELECT DISTINCT "${sch.senderCol}" 
                             FROM "${sch.msgTable}" 
@@ -868,7 +914,7 @@
                               AND "${sch.senderCol}" != '' 
                               AND "${sch.senderCol}" != '0' 
                               AND "${sch.senderCol}" != 'null'
-                            LIMIT 10
+                            LIMIT 15
                         `;
                         const senderRes = db.exec(senderQuery)[0];
                         if (senderRes && senderRes.values) {
@@ -1251,7 +1297,7 @@
             window.print();
         }
 
-        /* ⏰ タイムスタンプ解析（iOS Apple Epoch / CoreData & Unixタイムスタンプ完全対応） */
+        /* ⏰ タイムスタンプ解析（iOS Apple Epoch / Unix完全対応） */
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;
             
@@ -1263,25 +1309,13 @@
             let num = Number(ts);
             if (isNaN(num) || num === 0) return null;
 
-            const appleEpochMs = 978307200000; // 2001-01-01 00:00:00 UTC (iOS CoreData 基準時)
+            const appleEpochMs = 978307200000;
 
-            // 1. Unix タイムスタンプ (ミリ秒)
-            if (num >= 1500000000000 && num <= 2500000000000) {
-                return new Date(num);
-            }
-            // 2. Unix タイムスタンプ (秒)
-            if (num >= 1000000000 && num <= 2147483647) {
-                return new Date(num * 1000);
-            }
-            // 3. Apple Epoch (ミリ秒)
-            if (num >= 300000000000 && num <= 1200000000000) {
-                return new Date(appleEpochMs + num);
-            }
-            // 4. Apple Epoch (秒)
-            if (num >= 300000000 && num <= 1200000000) {
-                return new Date(appleEpochMs + (num * 1000));
-            }
-            // 5. 超高精度 Apple Epoch 処理
+            if (num >= 1500000000000 && num <= 2500000000000) return new Date(num);
+            if (num >= 1000000000 && num <= 2147483647) return new Date(num * 1000);
+            if (num >= 300000000000 && num <= 1200000000000) return new Date(appleEpochMs + num);
+            if (num >= 300000000 && num <= 1200000000) return new Date(appleEpochMs + (num * 1000));
+
             if (num > 1000000000000000) {
                 let reduced = num;
                 while (reduced > 2500000000000) {
@@ -1292,14 +1326,10 @@
             }
 
             const directDate = new Date(num);
-            if (!isNaN(directDate.getTime()) && directDate.getFullYear() >= 2010 && directDate.getFullYear() <= 2035) {
-                return directDate;
-            }
+            if (!isNaN(directDate.getTime()) && directDate.getFullYear() >= 2010 && directDate.getFullYear() <= 2035) return directDate;
 
             const appleFallback = new Date(appleEpochMs + num);
-            if (!isNaN(appleFallback.getTime()) && appleFallback.getFullYear() >= 2010 && appleFallback.getFullYear() <= 2035) {
-                return appleFallback;
-            }
+            if (!isNaN(appleFallback.getTime()) && appleFallback.getFullYear() >= 2010 && appleFallback.getFullYear() <= 2035) return appleFallback;
 
             return null;
         }

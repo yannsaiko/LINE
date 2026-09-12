@@ -22,7 +22,7 @@
         .file-inputs label:active { background: #05b34c; }
         .file-inputs input { display: none; }
         
-        .ios-warning-box { margin-top: 15px; font-size: 12px; color: #1e3a8a; line-height: 1.5; background: #eff6ff; padding: 12px 14px; border-radius: 8px; border: 1px solid #bfdbfe; max-width: 500px; text-align: left; }
+        .ios-warning-box { margin-top: 15px; font-size: 12px; color: #9a3412; line-height: 1.5; background: #fff7ed; padding: 12px 14px; border-radius: 8px; border: 1px solid #ffedd5; max-width: 500px; text-align: left; }
 
         /* 🔄 リアルタイム読み込みプログレスバーモーダル */
         #progress-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; }
@@ -147,6 +147,7 @@
         body.backup-format .msg-sender-name { font-weight: bold !important; text-align: left !important; color: #000 !important; font-size: 13px !important; }
         body.backup-format .bubble { background: transparent !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; display: block !important; word-break: break-all; color: #000 !important; font-size: 13px !important; }
         
+        /* テキスト印刷時の「日付と時間の左寄せ」指定 */
         body.backup-format .msg-datetime-sub {
             text-align: left !important;
             font-size: 11px !important;
@@ -171,6 +172,7 @@
             .search-results-dropdown { width: 240px; }
         }
 
+        /* 🖨️ 印刷スタイル */
         body.hide-date .date-divider { display: none !important; }
         body.hide-time .msg-datetime-sub { display: none !important; }
         body.hide-sender .msg-sender-name, body.hide-sender .msg-avatar { display: none !important; }
@@ -233,14 +235,15 @@
 
     <div id="drop-zone">
         <h2>ファイルを選択</h2>
-        <p style="margin-top:8px; color:#666; font-size:13px;">`Line.sqlite` 、LINEの `.txt` バックアップ、またはZIPファイルを読み込めます</p>
+        <p style="margin-top:8px; color:#666; font-size:13px;">`Line.sqlite` や `Talk.sqlite` 、ZIPアーカイブを読み込んで閲覧できます</p>
         <div class="file-inputs">
-            <label>📁 ファイル/ZIPを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip,.txt"></label>
+            <label>📁 ファイル/ZIPを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip"></label>
             <label class="folder-label">📂 フォルダーを選択<input type="file" class="folder-input-elem" webkitdirectory directory multiple></label>
         </div>
         <div class="ios-warning-box">
-            💡 <b>iPhoneで大容量データベースがフリーズする場合:</b><br>
-            LINEアプリ内の「トーク履歴を送信」機能で保存された <b>.txt</b> ファイルなら、iPhoneのメモリ上限に引っかからず快適に読み込めます。
+            📱 <b>iPhone / iPad をご利用の方へ:</b><br>
+            ・「📂 フォルダーを選択」ボタンはiOSの制限でフリーズする原因になります。<br>
+            ・<b>「📁 ファイル/ZIPを選択」</b>から解凍済みの <b>Line.sqlite</b> ファイルを直に選択してください。
         </div>
     </div>
 
@@ -317,7 +320,7 @@
         <div id="sidebar">
             <div class="sidebar-section">
                 <div class="add-files-bar">
-                    <label class="btn-small">＋ 追加ファイル/ZIP<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip,.txt" style="display:none;"></label>
+                    <label class="btn-small">＋ 追加ファイル/ZIP<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.zip" style="display:none;"></label>
                     <label class="btn-small">＋ 追加フォルダー<input type="file" class="folder-input-elem" webkitdirectory directory multiple style="display:none;"></label>
                 </div>
                 <div>
@@ -343,6 +346,7 @@
                 <div class="chat-header-actions">
                     <button class="btn-small" onclick="resetAllMasks()" title="全てのモザイク・非表示をリセット">🔄 解除</button>
                     
+                    <!-- 💬 メッセージ検索＆複数選択ジャンプUI -->
                     <div class="msg-search-box">
                         <input type="text" id="msg-search" placeholder="💬 メッセージ検索..." oninput="onSearchInput(this.value)">
                         <span id="search-count" class="search-count"></span>
@@ -377,18 +381,23 @@
 
         window.addEventListener('DOMContentLoaded', async () => {
             try {
-                updateStatus('SQL.js Engine 初期化中...');
+                updateStatus('SQL.js Engine (WASM) 初期化中...');
                 if (typeof initSqlJs === 'undefined') throw new Error("sql.js ライブラリが読み込まれていません。");
                 SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
-                updateStatus('準備完了: ファイルを選択してください');
+                updateStatus('準備完了: ファイルまたはZIPを選択してください');
             } catch (err) {
-                updateStatus('初期化警告 (SQLite機能のみ制限): ' + err.message);
+                updateStatus('初期化エラー: ' + err.message);
             }
         });
 
         function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
-        function yieldToUI(ms = 80) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
+        // 描画更新用非同期ウェイト（iPhoneのフリーズ・メモリクラッシュ防止用）
+        function yieldToUI(ms = 120) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // 🔄 読み込みバー（プログレスバー）制御関数
         function setProgressBar(show, title = '読み込み中...', percent = 0, subText = '') {
             const overlay = document.getElementById('progress-overlay');
             if (show) {
@@ -418,16 +427,19 @@
         document.addEventListener('click', (e) => {
             const dropdown = document.getElementById('search-dropdown');
             const searchBox = document.querySelector('.msg-search-box');
-            if (dropdown && searchBox && !searchBox.contains(e.target)) dropdown.style.display = 'none';
+            if (dropdown && searchBox && !searchBox.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
         });
 
-        function isCandidateFile(file) {
+        function isCandidateDbFile(file) {
             if (!file) return false;
             const name = file.name.toLowerCase();
             const ext = name.split('.').pop();
-            if (ext === 'zip' || ext === 'txt' || ext === 'sqlite' || ext === 'db' || ext === 'sqlite3') return true;
-            const skipExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'm4a', 'mp3', 'aac', 'plist', 'json', 'xml', 'pdf'];
-            return !skipExts.includes(ext);
+            if (ext === 'zip') return true;
+            const skipExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'm4a', 'mp3', 'aac', 'plist', 'json', 'xml', 'txt', 'pdf'];
+            if (skipExts.includes(ext)) return false;
+            return name.endsWith('.sqlite') || name.endsWith('.db') || name.endsWith('.sqlite3') || name.includes('line') || name.includes('talk') || !name.includes('.');
         }
 
         function isSqliteFileHeader(buffer) {
@@ -438,87 +450,77 @@
         }
 
         async function processFiles(files) {
-            const candidateFiles = files.filter(isCandidateFile);
+            if (!SQL) return;
+            const candidateFiles = files.filter(isCandidateDbFile);
 
             if (candidateFiles.length === 0) {
-                alert('解析可能なファイルが見つかりませんでした。「.txt」または「Line.sqlite」を選択してください。');
+                alert('解析可能なファイルが見つかりませんでした。「Line.sqlite」や「.zip」を選択してください。');
                 return;
             }
 
             setProgressBar(true, 'ファイルをスキャン中...', 5, `対象: ${candidateFiles.length} 件`);
-            await yieldToUI(100);
+            await yieldToUI(150);
 
             let logs = [];
-            let validCount = 0;
+            let validDbCount = 0;
             const fileFilterSelect = document.getElementById('file-filter');
 
             for (let i = 0; i < candidateFiles.length; i++) {
                 const f = candidateFiles[i];
 
+                // 1. iCloud未ダウンロード等による0バイトチェック
                 if (f.size === 0) {
-                    logs.push(`⚠️ ${f.name}: 0バイトファイル（未ダウンロード）`);
+                    logs.push(`⚠️ ${f.name}: 0バイトファイル（iCloud未ダウンロード等）`);
                     continue;
                 }
 
-                const fname = f.name.toLowerCase();
-
-                // 📄 1. テキスト（.txt）解析処理
-                if (fname.endsWith('.txt')) {
-                    setProgressBar(true, 'テキスト形式のトークを解析中...', 50, f.name);
-                    await yieldToUI(80);
-                    const label = f.webkitRelativePath || f.fullPath || f.name;
-                    const res = await parseLineTextFile(f, label, fileFilterSelect);
-                    if (res.success) validCount++;
-                    else logs.push(`❌ ${f.name}: ${res.reason}`);
-                } 
-                // 📦 2. ZIP解析処理
-                else if (fname.endsWith('.zip')) {
-                    setProgressBar(true, 'ZIPを展開中...', 30, f.name);
-                    await yieldToUI(80);
+                // 2. ZIP解凍処理（メモリ保護のため1件ずつ展開）
+                if (f.name.toLowerCase().endsWith('.zip')) {
+                    setProgressBar(true, 'ZIPを展開中...', Math.round(((i + 1) / candidateFiles.length) * 30), f.name);
+                    await yieldToUI(100);
                     try {
                         const zip = await JSZip.loadAsync(f);
-                        const zipEntries = Object.values(zip.files).filter(e => !e.dir && isCandidateFile({ name: e.name }));
+                        const zipEntries = Object.values(zip.files).filter(e => !e.dir && isCandidateDbFile({ name: e.name }));
                         
                         for (let j = 0; j < zipEntries.length; j++) {
                             const entry = zipEntries[j];
-                            setProgressBar(true, 'ZIP内ファイルを処理中...', 30 + Math.round(((j + 1) / zipEntries.length) * 60), entry.name);
-                            await yieldToUI(80);
+                            const pct = 30 + Math.round(((j + 1) / zipEntries.length) * 60);
+                            setProgressBar(true, 'ZIP内のデータベースを解析中...', pct, entry.name);
+                            await yieldToUI(100);
 
                             const blob = await entry.async('blob');
                             if (blob.size === 0) continue;
+                            
                             const decompressedFile = new File([blob], entry.name);
-
-                            if (entry.name.toLowerCase().endsWith('.txt')) {
-                                const res = await parseLineTextFile(decompressedFile, entry.name, fileFilterSelect);
-                                if (res.success) validCount++;
-                                else logs.push(`❌ ${entry.name}: ${res.reason}`);
-                            } else {
-                                const res = await parseSingleDatabase(decompressedFile, entry.name, fileFilterSelect);
-                                if (res.success) validCount++;
-                                else logs.push(`❌ ${entry.name}: ${res.reason}`);
-                            }
+                            const res = await parseSingleDatabase(decompressedFile, entry.name, fileFilterSelect);
+                            if (res.success) validDbCount++;
+                            else logs.push(`❌ ${entry.name}: ${res.reason}`);
                         }
                     } catch(e) {
-                        logs.push(`❌ ${f.name}: ZIPの解凍に失敗 (${e.message})`);
+                        logs.push(`❌ ${f.name}: ZIPの解凍に失敗しました (${e.message})`);
                     }
-                } 
-                // 🗄️ 3. SQLite解析処理
-                else {
-                    setProgressBar(true, 'データベースを解析中...', 50, f.name);
-                    await yieldToUI(80);
+                } else {
+                    // 単体SQLiteファイル処理
+                    const pct = 10 + Math.round(((i + 1) / candidateFiles.length) * 85);
+                    setProgressBar(true, 'データベースを解析中...', pct, f.name);
+                    await yieldToUI(120);
+
                     const label = f.webkitRelativePath || f.fullPath || f.name;
                     const res = await parseSingleDatabase(f, label, fileFilterSelect);
-                    if (res.success) validCount++;
+                    if (res.success) validDbCount++;
                     else logs.push(`❌ ${f.name}: ${res.reason}`);
                 }
-                await yieldToUI(80);
+                await yieldToUI(100);
             }
 
+            setProgressBar(true, '画面を更新中...', 100, '完了');
+            await yieldToUI(100);
             setProgressBar(false);
 
-            if (validCount === 0) {
-                alert('【解析エラー】トークデータが見つかりませんでした。\n\n' + logs.join('\n'));
-                updateStatus('エラー: 該当データなし');
+            if (validDbCount === 0) {
+                let msg = '【有効なLINEデータベースが見つかりませんでした】\n\n【詳細原因】\n' + logs.join('\n');
+                alert(msg);
+                updateStatus('エラー: LINE DB未検出');
                 return;
             }
 
@@ -526,105 +528,22 @@
             document.getElementById('drop-zone').style.display = 'none';
             document.getElementById('app-container').style.display = 'flex';
             document.getElementById('btn-reset').style.display = 'inline-flex';
-            updateStatus(`解析完了: ${allChatRooms.length} 件のトークを表示可能`);
+            updateStatus(`解析完了: ${allChatRooms.length} 件のトークを発見`);
         }
 
-        // 📄 LINEテキストバックアップ (.txt) 解析関数
-        async function parseLineTextFile(file, displayLabel, fileFilterSelect) {
-            try {
-                const text = await file.text();
-                const lines = text.split(/\r?\n/);
-                let title = file.name.replace(/\.txt$/i, '').replace(/^\[LINE\]\s*/i, '').replace(/とのトーク履歴$/i, '');
-                let messages = [];
-                let currentDate = '';
-                let currentMsg = null;
-
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i].trim();
-                    if (!line) continue;
-
-                    if (i === 0 && line.startsWith('[LINE]')) {
-                        const m = line.match(/\[LINE\]\s*(.*?)とのトーク履歴/);
-                        if (m && m[1]) title = m[1];
-                        continue;
-                    }
-                    if (line.startsWith('保存日時：') || line.startsWith('Saved:')) continue;
-
-                    // 日付行判定 (例: 2023/10/25(水), 2023/10/25)
-                    const dateMatch = line.match(/^(\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2}(?:\([日月火水木金土]\))?)/);
-                    if (dateMatch && !line.includes('\t')) {
-                        currentDate = dateMatch[1];
-                        continue;
-                    }
-
-                    // メッセージ行判定 (hh:mm\t送信者\t本文)
-                    const msgMatch = line.match(/^(\d{1,2}:\d{2})\t([^\t]+)\t(.*)/);
-                    if (msgMatch) {
-                        if (currentMsg) messages.push(currentMsg);
-                        const timeStr = msgMatch[1];
-                        const sender = msgMatch[2];
-                        const msgText = msgMatch[3];
-                        const isMe = (sender === '自分' || sender === 'Me');
-
-                        currentMsg = {
-                            id: messages.length,
-                            text: msgText,
-                            isMe: isMe,
-                            senderName: sender,
-                            dateStr: currentDate,
-                            fullDateTimeStr: currentDate ? `${currentDate} ${timeStr}` : timeStr
-                        };
-                        continue;
-                    }
-
-                    // 複数行本文の継続
-                    if (currentMsg) {
-                        currentMsg.text += '\n' + line;
-                    }
-                }
-                if (currentMsg) messages.push(currentMsg);
-
-                if (messages.length === 0) {
-                    return { success: false, reason: 'LINE形式のテキストメッセージを抽出できませんでした' };
-                }
-
-                fileCounter++;
-                const fileId = 'file_' + fileCounter;
-                fileMap[fileId] = { file, displayLabel, isText: true, messages };
-
-                const opt = document.createElement('option');
-                opt.value = fileId;
-                opt.innerText = displayLabel + ' (テキスト)';
-                fileFilterSelect.appendChild(opt);
-
-                allChatRooms.push({
-                    fileId,
-                    displayLabel,
-                    id: fileId,
-                    name: title,
-                    count: messages.length,
-                    lastTime: messages[messages.length - 1]?.fullDateTimeStr || '',
-                    isText: true
-                });
-
-                return { success: true };
-            } catch (err) {
-                return { success: false, reason: err.message };
-            }
-        }
-
-        // 🗄️ SQLiteデータベース解析関数
+        // 1つのSQLiteファイルを安全に解析する（メモリ割り当て即時解放）
         async function parseSingleDatabase(file, displayLabel, fileFilterSelect) {
-            if (!SQL) return { success: false, reason: 'SQL.js Engineが読み込まれていません' };
             let db = null;
+            let buf = null;
             try {
                 const slice = await file.slice(0, 16).arrayBuffer();
                 if (!isSqliteFileHeader(slice)) {
                     return { success: false, reason: 'SQLiteフォーマットではありません' };
                 }
 
-                const buf = await file.arrayBuffer();
+                buf = await file.arrayBuffer();
                 db = new SQL.Database(new Uint8Array(buf));
+                buf = null; // メモリ解放
 
                 const schema = detectSchema(db);
                 if (!schema.msgTable) {
@@ -633,7 +552,7 @@
 
                 fileCounter++;
                 const fileId = 'file_' + fileCounter;
-                fileMap[fileId] = { file, displayLabel, schema, isText: false };
+                fileMap[fileId] = { file, displayLabel, schema };
 
                 const opt = document.createElement('option');
                 opt.value = fileId;
@@ -646,25 +565,25 @@
 
                 return { success: true };
             } catch (err) {
-                if (err.message && (err.message.includes('out of memory') || err.message.includes('WebAssembly'))) {
-                    return { success: false, reason: 'iPhoneのメモリ上限を超えました。LINEから出力した.txtファイルを使用してください。' };
-                }
                 return { success: false, reason: err.message };
             } finally {
                 if (db) { db.close(); db = null; }
             }
         }
 
+        // 柔軟なスキーマ検出（iOS, Android, 特殊テーブル名対応）
         function detectSchema(db) {
             let tables = [];
             try {
                 tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'")[0]?.values.map(r => r[0]) || [];
             } catch(e) { return {}; }
 
+            // 1. iOS標準 (ZMESSAGE)
             if (tables.includes('ZMESSAGE')) {
                 const cols = db.exec("PRAGMA table_info(ZMESSAGE)")[0].values.map(c => c[1]);
                 return {
-                    type: 'iOS', msgTable: 'ZMESSAGE',
+                    type: 'iOS',
+                    msgTable: 'ZMESSAGE',
                     chatCol: cols.find(c => /^ZCHAT$/i.test(c)) || 'ZCHAT',
                     textCol: cols.find(c => /^ZTEXT$/i.test(c)) || 'ZTEXT',
                     timeCol: cols.find(c => /^ZCREATEDTIME$/i.test(c)) || 'ZCREATEDTIME',
@@ -676,10 +595,12 @@
                 };
             }
             
+            // 2. Android標準 (chat_history)
             if (tables.includes('chat_history')) {
                 const cols = db.exec("PRAGMA table_info(chat_history)")[0].values.map(c => c[1]);
                 return {
-                    type: 'Android', msgTable: 'chat_history',
+                    type: 'Android',
+                    msgTable: 'chat_history',
                     chatCol: cols.find(c => /chat_id/i.test(c)) || 'chat_id',
                     textCol: cols.find(c => /content/i.test(c)) || 'content',
                     timeCol: cols.find(c => /created_time/i.test(c)) || 'created_time',
@@ -690,6 +611,31 @@
                     chatTable: tables.includes('chat') ? 'chat' : null
                 };
             }
+
+            // 3. 汎用/変形構造フォールバック検索
+            for (const t of tables) {
+                try {
+                    const cols = db.exec(`PRAGMA table_info("${t}")`)[0]?.values.map(c => c[1]) || [];
+                    const hasText = cols.some(c => /text|content|body|message/i.test(c));
+                    const hasTime = cols.some(c => /time|date|created/i.test(c));
+                    const hasChat = cols.some(c => /chat|room|id/i.test(c));
+                    if (hasText && hasTime && hasChat) {
+                        return {
+                            type: 'Generic',
+                            msgTable: t,
+                            chatCol: cols.find(c => /chat|room/i.test(c)) || cols[0],
+                            textCol: cols.find(c => /text|content|body|message/i.test(c)),
+                            timeCol: cols.find(c => /time|date|created/i.test(c)),
+                            isMeCol: cols.find(c => /me|sent|from_me|is_from_me/i.test(c)) || null,
+                            senderCol: cols.find(c => /sender|from|user/i.test(c)) || cols[0],
+                            typeCol: null,
+                            userTable: tables.find(tbl => /user|contact/i.test(tbl)) || null,
+                            chatTable: tables.find(tbl => /chat|room/i.test(tbl)) || null
+                        };
+                    }
+                } catch(e){}
+            }
+
             return {};
         }
 
@@ -723,6 +669,7 @@
                         const cols = res.columns.map(c => c.toUpperCase());
                         const pkIdx = cols.findIndex(c => c === 'Z_PK' || c === 'ROWID' || c === 'ID' || c === 'CHAT_ID' || c === '_ID');
                         const nameIdx = cols.findIndex(c => c.includes('NAME') || c.includes('TITLE'));
+                        
                         res.values.forEach(r => {
                             let name = nameIdx !== -1 ? r[nameIdx] : null;
                             if (name && pkIdx !== -1 && r[pkIdx] !== undefined) chatMap[String(r[pkIdx])] = String(name);
@@ -819,20 +766,11 @@
 
         async function loadMessagesOnDemand(chatItem) {
             setProgressBar(true, 'メッセージを取得中...', 50, chatItem.name);
-            await yieldToUI(80);
+            await yieldToUI(100);
 
             const fileObj = fileMap[chatItem.fileId];
             if (!fileObj) return;
 
-            // テキストファイルの場合はメモリ上にある配列を即表示
-            if (fileObj.isText) {
-                rawMessages = fileObj.messages;
-                displayMessagesInUI(chatItem);
-                setProgressBar(false);
-                return;
-            }
-
-            // SQLiteデータベースの場合
             let db = null;
             try {
                 const buf = await fileObj.file.arrayBuffer();
@@ -883,36 +821,34 @@
                     const dateObj = parseTimestamp(rawTime);
 
                     return {
-                        id: idx, text, isMe, senderName,
+                        id: idx,
+                        text, isMe, senderName,
                         dateStr: dateObj ? formatDateHeader(dateObj) : '',
                         fullDateTimeStr: dateObj ? `${formatDate(dateObj)} ${formatTime(dateObj)}` : ''
                     };
                 });
 
-                displayMessagesInUI(chatItem);
+                document.getElementById('chat-header').style.display = 'flex';
+                document.getElementById('chat-header-title').innerText = chatItem.name;
+                document.getElementById('chat-header-info').innerText = `${chatItem.count}件のメッセージ`;
+                document.getElementById('msg-search').value = '';
+                document.getElementById('search-count').innerText = '';
+                document.getElementById('search-dropdown').style.display = 'none';
+
+                const now = new Date();
+                const nowStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${formatTime(now)}`;
+                document.getElementById('backup-header-text').innerText = `[LINE] ${chatItem.name}とのトーク履歴\n保存日時：${nowStr}\n`;
+
+                renderMessagesUI(rawMessages);
+                document.body.classList.add('show-chat');
                 setProgressBar(false);
 
             } catch (err) {
                 if (db) db.close();
                 setProgressBar(false);
                 alert('メッセージ読み込みエラー: ' + err.message);
+                updateStatus('エラー: ' + err.message);
             }
-        }
-
-        function displayMessagesInUI(chatItem) {
-            document.getElementById('chat-header').style.display = 'flex';
-            document.getElementById('chat-header-title').innerText = chatItem.name;
-            document.getElementById('chat-header-info').innerText = `${chatItem.count}件のメッセージ`;
-            document.getElementById('msg-search').value = '';
-            document.getElementById('search-count').innerText = '';
-            document.getElementById('search-dropdown').style.display = 'none';
-
-            const now = new Date();
-            const nowStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${formatTime(now)}`;
-            document.getElementById('backup-header-text').innerText = `[LINE] ${chatItem.name}とのトーク履歴\n保存日時：${nowStr}\n`;
-
-            renderMessagesUI(rawMessages);
-            document.body.classList.add('show-chat');
         }
 
         function backToList() { document.body.classList.remove('show-chat'); }

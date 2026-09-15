@@ -345,6 +345,10 @@
         let rawMessages = [];
         let fileCounter = 0;
 
+        // 全データベース共通のユーザー・チャット辞書（クロスファイル照合用）
+        let globalUserMap = {};
+        let globalChatMap = {};
+
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 updateStatus('SQL.js Engine 初期化中...');
@@ -728,7 +732,7 @@
                         const pkIdx = cols.indexOf('Z_PK') !== -1 ? cols.indexOf('Z_PK') : cols.indexOf('ROWID');
                         const midIdx = cols.indexOf('ZMID') !== -1 ? cols.indexOf('ZMID') : cols.indexOf('MID');
                         
-                        const priorityCols = ['ZCUSTOMNAME', 'ZNAME', 'ZADDRESSBOOKNAME', 'ZPHONEBOOKNAME', 'DISPLAY_NAME', 'NAME', 'NICKNAME'];
+                        const priorityCols = ['ZCUSTOMNAME', 'CUSTOM_NAME', 'ZNAME', 'NAME', 'ZADDRESSBOOKNAME', 'DISPLAY_NAME', 'SERVER_NAME', 'ZPHONEBOOKNAME', 'NICKNAME'];
                         const nameIndices = priorityCols.map(p => cols.indexOf(p)).filter(idx => idx !== -1);
 
                         res.values.forEach(r => {
@@ -740,8 +744,16 @@
                                 }
                             }
                             if (nameVal) {
-                                if (pkIdx !== -1 && r[pkIdx] !== null) userMap[String(r[pkIdx]).trim()] = nameVal;
-                                if (midIdx !== -1 && r[midIdx] !== null) userMap[String(r[midIdx]).trim()] = nameVal;
+                                if (pkIdx !== -1 && r[pkIdx] !== null) {
+                                    const pkKey = String(r[pkIdx]).trim();
+                                    userMap[pkKey] = nameVal;
+                                    globalUserMap[pkKey] = nameVal;
+                                }
+                                if (midIdx !== -1 && r[midIdx] !== null) {
+                                    const midKey = String(r[midIdx]).trim();
+                                    userMap[midKey] = nameVal;
+                                    globalUserMap[midKey] = nameVal;
+                                }
                             }
                         });
                     }
@@ -757,7 +769,7 @@
                         const midIdx = cols.indexOf('ZMID') !== -1 ? cols.indexOf('ZMID') : cols.indexOf('MID');
                         const userLinkIdx = cols.indexOf('ZUSER');
 
-                        const priorityCols = ['ZTITLE', 'ZNAME', 'ZCUSTOMNAME', 'TITLE', 'NAME', 'CHAT_NAME'];
+                        const priorityCols = ['ZTITLE', 'TITLE', 'ZNAME', 'NAME', 'ZCUSTOMNAME', 'CUSTOM_NAME', 'CHAT_NAME'];
                         const nameIndices = priorityCols.map(p => cols.indexOf(p)).filter(idx => idx !== -1);
 
                         res.values.forEach(r => {
@@ -771,12 +783,22 @@
 
                             if (!nameVal && userLinkIdx !== -1 && r[userLinkIdx] !== null) {
                                 const targetUserPk = String(r[userLinkIdx]).trim();
-                                if (userMap[targetUserPk]) nameVal = userMap[targetUserPk];
+                                if (userMap[targetUserPk] || globalUserMap[targetUserPk]) {
+                                    nameVal = userMap[targetUserPk] || globalUserMap[targetUserPk];
+                                }
                             }
 
                             if (nameVal) {
-                                if (pkIdx !== -1 && r[pkIdx] !== null) chatMap[String(r[pkIdx]).trim()] = nameVal;
-                                if (midIdx !== -1 && r[midIdx] !== null) chatMap[String(r[midIdx]).trim()] = nameVal;
+                                if (pkIdx !== -1 && r[pkIdx] !== null) {
+                                    const pkKey = String(r[pkIdx]).trim();
+                                    chatMap[pkKey] = nameVal;
+                                    globalChatMap[pkKey] = nameVal;
+                                }
+                                if (midIdx !== -1 && r[midIdx] !== null) {
+                                    const midKey = String(r[midIdx]).trim();
+                                    chatMap[midKey] = nameVal;
+                                    globalChatMap[midKey] = nameVal;
+                                }
                             }
                         });
                     }
@@ -802,27 +824,36 @@
 
             return res.values.map(r => {
                 const chatId = String(r[0]).trim();
-                let name = chatMap[chatId] || userMap[chatId] || null;
+                let name = chatMap[chatId] || userMap[chatId] || globalChatMap[chatId] || globalUserMap[chatId] || null;
                 const safeId = chatId.replace(/'/g, "''");
 
-                // 1. ZCHAT テーブルから ZUSER 参照または ZMID 参照で相手名を再検索
+                // 1. ZCHAT テーブルから ZUSER 参照または ZMID 参照で相手名を再検索（修正箇所）
                 if (!name && sch.chatTable) {
                     try {
-                        const chatRowQ = `SELECT * FROM "${sch.chatTable}" WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' OR CAST(Z_PK AS TEXT) = '${safeId}'`;
-                        const chatRowRes = db.exec(chatRowQ)[0];
-                        if (chatRowRes && chatRowRes.values && chatRowRes.values.length > 0) {
-                            const rowVals = chatRowRes.values[0];
-                            const cols = chatRowRes.columns.map(c => c.toUpperCase());
-                            const uIdx = cols.indexOf('ZUSER');
-                            const mIdx = cols.indexOf('ZMID') !== -1 ? cols.indexOf('ZMID') : cols.indexOf('MID');
-                            
-                            if (uIdx !== -1 && rowVals[uIdx] !== null) {
-                                const uPk = String(rowVals[uIdx]).trim();
-                                if (userMap[uPk]) name = userMap[uPk];
-                            }
-                            if (!name && mIdx !== -1 && rowVals[mIdx] !== null) {
-                                const uMid = String(rowVals[mIdx]).trim();
-                                if (userMap[uMid]) name = userMap[uMid];
+                        const chatTableInfo = db.exec(`PRAGMA table_info("${sch.chatTable}")`)[0]?.values.map(c => c[1].toUpperCase()) || [];
+                        let whereConds = [];
+                        if (chatTableInfo.includes('Z_PK')) whereConds.push(`CAST(Z_PK AS TEXT) = '${safeId}'`);
+                        if (chatTableInfo.includes('ZMID')) whereConds.push(`CAST(ZMID AS TEXT) = '${safeId}'`);
+                        if (chatTableInfo.includes('MID')) whereConds.push(`CAST(MID AS TEXT) = '${safeId}'`);
+                        if (chatTableInfo.includes('CHAT_ID')) whereConds.push(`CAST(CHAT_ID AS TEXT) = '${safeId}'`);
+
+                        if (whereConds.length > 0) {
+                            const chatRowQ = `SELECT * FROM "${sch.chatTable}" WHERE ${whereConds.join(' OR ')}`;
+                            const chatRowRes = db.exec(chatRowQ)[0];
+                            if (chatRowRes && chatRowRes.values && chatRowRes.values.length > 0) {
+                                const rowVals = chatRowRes.values[0];
+                                const cols = chatRowRes.columns.map(c => c.toUpperCase());
+                                const uIdx = cols.indexOf('ZUSER');
+                                const mIdx = cols.indexOf('ZMID') !== -1 ? cols.indexOf('ZMID') : cols.indexOf('MID');
+                                
+                                if (uIdx !== -1 && rowVals[uIdx] !== null) {
+                                    const uPk = String(rowVals[uIdx]).trim();
+                                    if (userMap[uPk] || globalUserMap[uPk]) name = userMap[uPk] || globalUserMap[uPk];
+                                }
+                                if (!name && mIdx !== -1 && rowVals[mIdx] !== null) {
+                                    const uMid = String(rowVals[mIdx]).trim();
+                                    if (userMap[uMid] || globalUserMap[uMid]) name = userMap[uMid] || globalUserMap[uMid];
+                                }
                             }
                         }
                     } catch(e){}
@@ -843,8 +874,8 @@
                         if (senderRes && senderRes.values) {
                             for (const sRow of senderRes.values) {
                                 const sId = String(sRow[0]).trim();
-                                if (userMap[sId]) {
-                                    name = userMap[sId];
+                                if (userMap[sId] || globalUserMap[sId]) {
+                                    name = userMap[sId] || globalUserMap[sId];
                                     break;
                                 }
                             }
@@ -964,8 +995,8 @@
                     let senderName = '相手';
                     if (isMe) {
                         senderName = '自分';
-                    } else if (fileObj.userMap?.[senderId]) {
-                        senderName = fileObj.userMap[senderId];
+                    } else if (fileObj.userMap?.[senderId] || globalUserMap[senderId]) {
+                        senderName = fileObj.userMap?.[senderId] || globalUserMap[senderId];
                     } else if (chatItem.name && !chatItem.name.startsWith('トーク部屋')) {
                         senderName = chatItem.name;
                     } else if (senderId) {

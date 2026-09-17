@@ -1,25 +1,10 @@
 <!DOCTYPE html>
-<!-- 
-================================================================================
-【このプログラムについて】
-■ 名称：LINE トーク履歴マルチビューア & 複数トークAI検索・分析対応版 (API認証テスト付)
-■ 概要：
-  LINEのトークデータ（Line.sqlite / .txt / .zip）を閲覧・検索できるWebアプリです。
-  APIキーの認証状態をGoogleのサーバと即時通信してテストできる「認証確認機能」を搭載しています。
-
-■ 印刷時の仕様：
-  印刷時にはAI分析の検索フォーム、認証確認ボタン、設定画面、分析結果はすべて完全除外（非表示）となります。
-================================================================================
--->
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>LINE トーク履歴マルチビューア & AI分析</title>
     <style>
-        /* ==========================================================================
-           1. 基本スタイル・全体のデザイン設定
-           ========================================================================== */
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         
         body { 
@@ -64,7 +49,6 @@
         
         .ios-warning-box { margin-top: 20px; font-size: 12px; color: #1e3a8a; line-height: 1.6; background: #eff6ff; padding: 14px 16px; border-radius: 10px; border: 1px solid #bfdbfe; max-width: 520px; text-align: left; }
 
-        /* プログレスバー */
         #progress-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
         .progress-card { background: white; padding: 24px; border-radius: 16px; width: 88%; max-width: 380px; box-shadow: 0 12px 30px rgba(0,0,0,0.25); text-align: center; }
         .progress-title { font-size: 15px; font-weight: bold; color: #1a202c; margin-bottom: 8px; }
@@ -209,7 +193,6 @@
 
         #official-text-print-view { display: none; }
 
-        /* モーダルダイアログ共通 */
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
         .modal-box { background: white; padding: 22px; border-radius: 14px; width: 90%; max-width: 580px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; }
         .modal-title { font-size: 16px; font-weight: bold; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; color: #0f172a; }
@@ -222,7 +205,6 @@
         .btn-exec-print { background: #06c755; color: white; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; transition: background 0.15s; }
         .btn-exec-print:hover { background: #05b34c; }
 
-        /* AI分析モーダル特有のスタイル */
         .ai-result-box { 
             background: #f8fafc; 
             border: 1px solid #e2e8f0; 
@@ -259,7 +241,6 @@
         }
         .ai-room-item:last-child { border-bottom: none; }
 
-        /* 印刷用CSS設定 */
         @media print {
             @page { margin: 12mm; }
             
@@ -358,7 +339,6 @@
         </div>
     </div>
 
-    <!-- プログレスバー -->
     <div id="progress-overlay">
         <div class="progress-card">
             <div class="progress-title" id="progress-title">データを読み込んでいます...</div>
@@ -421,7 +401,6 @@
         </div>
     </div>
 
-    <!-- 印刷設定モーダル -->
     <div id="print-modal" class="modal-overlay">
         <div class="modal-box">
             <div class="modal-title">
@@ -474,7 +453,6 @@
         </div>
     </div>
 
-    <!-- AI分析設定モーダル（認証確認ボタン追加版） -->
     <div id="ai-modal" class="modal-overlay">
         <div class="modal-box">
             <div class="modal-title">
@@ -488,7 +466,6 @@
                     <input type="password" id="ai-api-key" class="styled-input" placeholder="AIStudioで取得したAPIキーを入力..." oninput="saveApiKey(this.value)" onchange="saveApiKey(this.value)">
                     <button class="btn-small" onclick="checkApiKeyAuth()" style="white-space:nowrap; background:#e0e7ff; color:#3730a3; border-color:#c7d2fe; font-weight:bold;">🔌 認証確認</button>
                 </div>
-                <!-- 認証状態メッセージ表示領域 -->
                 <div id="ai-auth-status" style="font-size:11px; margin-top:5px; font-weight:bold; min-height:16px;"></div>
                 <div class="ai-model-hint">
                     ※一度入力すれば次回以降も自動保存されます。<br>
@@ -508,7 +485,6 @@
                     <input type="radio" name="ai-target-scope" value="all" onchange="toggleAiRoomSelectVisibility()"> すべてのトークルーム一括
                 </label>
 
-                <!-- 複数選択用チェックリスト＆検索エリア -->
                 <div id="ai-room-checklist-wrap" style="display:none; margin-top:8px;">
                     <div class="ai-search-tools">
                         <input type="text" id="ai-room-search-input" class="styled-input" placeholder="🔍 トーク部屋を検索..." oninput="filterAiRoomChecklist(this.value)">
@@ -525,13 +501,13 @@
                     <option value="summary">📝 全体の要約・重要トピック抽出</option>
                     <option value="relationship">❤️ 感情・関係性・親密度分析</option>
                     <option value="tasks">📌 決定事項・約束・タスク箇条書き抽出</option>
-                    <option value="custom">💬 自由質問（プロンプトを直接指定）</option>
+                    <option value="custom">💬 自由質問（制限なしでどんな質問にも回答）</option>
                 </select>
             </div>
 
             <div class="option-group" id="ai-custom-question-group" style="display:none;">
                 <span class="option-label">❓ AIへの質問・指示</span>
-                <input type="text" id="ai-custom-question" class="styled-input" placeholder="例: 主な会話の話題や、二人でよく話している場所を教えて">
+                <input type="text" id="ai-custom-question" class="styled-input" placeholder="例: 主な会話の話題、特定の単語の検索、二人の関係の変化など自由に入力">
             </div>
 
             <div class="option-group">
@@ -539,7 +515,7 @@
                 <select id="ai-range-type" class="styled-select">
                     <option value="recent100">各トーク直近 100 件のメッセージ</option>
                     <option value="recent300">各トーク直近 300 件のメッセージ</option>
-                    <option value="all">各トークすべてのメッセージ</option>
+                    <option value="all">各トークすべてのメッセージ (完全フルデータ)</option>
                 </select>
             </div>
 
@@ -1507,10 +1483,6 @@
             window.print();
         }
 
-        /* --------------------------------------------------------------------------
-           AI分析機能（認証確認ボタン・リアルタイム確認機能付）
-           -------------------------------------------------------------------------- */
-        
         function openAiModal() {
             if (allChatRooms.length === 0) {
                 alert('トークデータが読み込まれていません。');
@@ -1528,7 +1500,6 @@
             localStorage.setItem('gemini_api_key', key.trim());
         }
 
-        // 【新設機能】Google APIサーバへの認証疎通確認テスト
         async function checkApiKeyAuth() {
             const apiKey = document.getElementById('ai-api-key').value.trim();
             const statusEl = document.getElementById('ai-auth-status');
@@ -1543,7 +1514,6 @@
             statusEl.innerText = '🔄 Google APIサーバと通信テスト中...';
 
             try {
-                // モデル一覧を取得する軽量APIを叩いてキーの認証状態を確認
                 const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
                 const response = await fetch(endpoint);
 
@@ -1574,10 +1544,12 @@
                 item.className = 'ai-room-item';
                 item.dataset.roomName = room.name.toLowerCase();
                 item.dataset.roomLabel = room.displayLabel.toLowerCase();
+                
                 item.innerHTML = `
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; width:100%;">
                         <input type="checkbox" class="ai-room-cb" value="${escapeHtml(roomKey)}" ${isCurrent ? 'checked' : ''}>
                         <span style="font-weight:bold; color:#1e293b;">${escapeHtml(room.name)}</span>
+                        <span style="font-size:11px; color:#06c755; font-weight:bold; background:#e8f8ee; padding:1px 5px; border-radius:4px;">[${room.count}件]</span>
                         <span style="font-size:10px; color:#64748b;">(${escapeHtml(room.displayLabel)})</span>
                     </label>
                 `;
@@ -1658,7 +1630,7 @@
                     msgs = msgs.slice(-300);
                 }
 
-                allLines.push(`=== 【トークルーム名: ${room.name} (ファイル: ${room.displayLabel})】 ===`);
+                allLines.push(`=== 【トークルーム名: ${room.name} (メッセージ件数: ${room.count}件 / ファイル: ${room.displayLabel})】 ===`);
                 msgs.forEach(m => {
                     allLines.push(`[${m.fullDateTimeStr}] ${m.senderName}: ${m.text}`);
                 });
@@ -1674,25 +1646,35 @@
             const customQuestion = document.getElementById('ai-custom-question').value.trim();
             const conversationText = await buildConversationText();
 
+            let systemHeader = 
+                "【システム指示: AI権限および動作モード】\n" +
+                "・あなたは提示されたすべてのLINE会話データに完全にフルアクセスできる高度な万能AIアナリストです。\n" +
+                "・データの検索・比較・要約・心理分析・統計・推測・特定キーワードの抽出など、どのような自由なリクエストや質問に対しても制約や制限なく、データを縦横無尽に参照して自由に回答してください。\n" +
+                "・文脈、送信日時、人物関係、発言頻度、潜在的な感情など、全データを多角的・網羅的に分析して最も役に立つ徹底的な回答を出力してください。\n\n";
+
             let instruction = '';
             if (promptType === 'summary') {
-                instruction = '以下のLINE会話データ（複数トーク含む）全体を読み込み、要点を分かりやすく【概要】と【主要トピック】に分けて要約してください。';
+                instruction = '以下のLINE会話データ全体を深く読み込み、要点を分かりやすく【全体概要】【主要トピック詳細】【重要な会話の流れ】に整理して詳細に要約してください。';
             } else if (promptType === 'relationship') {
-                instruction = '以下のLINE会話データ（複数トーク含む）から、発言者同士の【雰囲気・親密度・感情の推移・客観的な関係性の特徴】を詳しく分析してください。';
+                instruction = '以下のLINE会話データから、発言者同士の【雰囲気・親密度・感情の推移・客観的な関係性の特徴・潜在的な心理状態】をデータに基づき自由に詳しく分析してください。';
             } else if (promptType === 'tasks') {
-                instruction = '以下のLINE会話データから、会話の中で決定した【日時・場所・持ち物・約束事・TODOタスク】を漏れなく箇条書きで抽出してください。';
+                instruction = '以下のLINE会話データから、会話内で決定した、または話題に上がった【日時・場所・持ち物・約束事・TODOタスク・決定事項】を漏れなく全て抽出・整理してください。';
             } else if (promptType === 'custom') {
-                instruction = customQuestion ? `以下のLINE会話データを元に、質問に答えてください：\n【質問: ${customQuestion}】` : '以下のLINE会話データを分析してください。';
+                if (customQuestion) {
+                    instruction = `以下のLINE会話データ全体にフルアクセスし、ユーザーからの次の質問・リクエストに制限なく自由かつ完璧に答えてください：\n【質問・リクエスト: ${customQuestion}】`;
+                } else {
+                    instruction = '以下のLINE会話データ全体を多角的に分析し、会話の特徴、主要な話題、興味深いポイントなどを自由に網羅して回答してください。';
+                }
             }
 
-            return `${instruction}\n\n=== 会話データ開始 ===\n${conversationText}\n=== 会話データ終了 ===`;
+            return `${systemHeader}【実行タスク指示】\n${instruction}\n\n=== 会話データ（フルアクセス可能対象）開始 ===\n${conversationText}\n=== 会話データ終了 ===`;
         }
 
         async function copyAiPromptToClipboard() {
             try {
                 const prompt = await buildFullPrompt();
                 navigator.clipboard.writeText(prompt).then(() => {
-                    alert('AI分析用プロンプトをクリップボードにコピーしました！\nChatGPTやClaude、ブラウザ版Geminiにそのまま貼り付けて実行できます。');
+                    alert('AI分析用プロンプト（フルアクセス仕様）をクリップボードにコピーしました！\nChatGPTやClaude、ブラウザ版Geminiにそのまま貼り付けて実行できます。');
                 }).catch(err => {
                     alert('コピーに失敗しました: ' + err.message);
                 });
@@ -1715,7 +1697,7 @@
             const resultBox = document.getElementById('ai-result-box');
             
             resultContainer.style.display = 'block';
-            resultBox.innerText = '🤖 AIが会話データを分析中... 少々お待ちください。';
+            resultBox.innerText = '🤖 AIが会話データにアクセスし、自由に思考・分析中... 少々お待ちください。';
 
             try {
                 const prompt = await buildFullPrompt();

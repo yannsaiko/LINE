@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LINE トーク履歴マルチビューア (名前復元強化版)</title>
+    <title>LINE トーク履歴マルチビューア</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif; height: 100vh; height: -webkit-fill-available; display: flex; flex-direction: column; background: #f5f5f5; color: #333; overflow: hidden; }
@@ -756,7 +756,6 @@
                         const pkIdx = cols.indexOf('Z_PK') !== -1 ? cols.indexOf('Z_PK') : cols.indexOf('ROWID');
                         const midIdx = cols.indexOf('ZMID') !== -1 ? cols.indexOf('ZMID') : cols.indexOf('MID');
                         
-                        // ZCUSTOMNAME (カスタム表示名) を最優先
                         const priorityCols = ['ZCUSTOMNAME', 'CUSTOM_NAME', 'ZNAME', 'NAME', 'ZADDRESSBOOKNAME', 'DISPLAY_NAME', 'SERVER_NAME', 'ZPHONEBOOKNAME', 'NICKNAME', 'ZREALNAME', 'ZCONTACTNAME'];
                         const nameIndices = priorityCols.map(p => cols.indexOf(p)).filter(idx => idx !== -1);
 
@@ -827,7 +826,6 @@
                                 }
                             }
 
-                            // 1対1トークで部屋名がNULLの場合、ZUSER（相手のID）から名前を補完
                             if (!nameVal && userLinkIdx !== -1 && r[userLinkIdx] !== null) {
                                 const targetUserPk = String(r[userLinkIdx]).trim();
                                 if (userMap[targetUserPk] || globalUserMap[targetUserPk]) {
@@ -877,7 +875,6 @@
                 let name = chatMap[chatId] || globalChatMap[chatId] || null;
                 const safeId = chatId.replace(/'/g, "''");
 
-                // トーク部屋名が取得できない場合、ZCHAT / ZUSER を直接リトライクエリ検索
                 if (!name && sch.chatTable) {
                     try {
                         const chatTableInfo = db.exec(`PRAGMA table_info("${sch.chatTable}")`)[0]?.values.map(c => c[1].toUpperCase()) || [];
@@ -904,7 +901,6 @@
                     } catch(e){}
                 }
 
-                // 発言者IDの最多送信者から相手の名前を逆引き
                 if (!name && sch.senderCol) {
                     try {
                         const senderQ = `
@@ -977,7 +973,7 @@
         }
 
         /* ----------------------------------------------------
-           メッセージの個別取得および送信者名の自動補完
+           メッセージ取得および ZTYPE/ZCONTENTTYPE マッピング処理
         ---------------------------------------------------- */
         async function loadMessagesOnDemand(chatItem) {
             setProgressBar(true, 'メッセージを取得中...', 50, chatItem.name);
@@ -1028,7 +1024,7 @@
                     const rawTime = r[3];
                     const msgContentType = Number(r[4]);
 
-                    // 自分（Me）の判定ロジック: ZSENDER が NULL/空/0/null の場合は自分
+                    // 自分（Me）の判定: ZSENDER が NULL/空/0/null の場合は自分
                     let isMe = false;
                     if (isMeVal !== null && isMeVal !== undefined) {
                         isMe = (Number(isMeVal) === 1 || isMeVal === true || String(isMeVal) === '1');
@@ -1036,30 +1032,41 @@
                         isMe = (!senderId || senderId === '0' || senderId === '' || senderId.toLowerCase() === 'null');
                     }
 
-                    // テキストの代替表示補完
+                    // メッセージ種別（ZTYPE / ZCONTENTTYPE）のマッピング正確化
                     let text = rawText;
-                    if (!text || text.trim() === '') {
+                    if (!text || text.trim() === '' || [1, 2, 3, 6, 7].includes(msgContentType)) {
                         switch (msgContentType) {
-                            case 1: text = '[📷 写真]'; break;
-                            case 2: text = '[🎥 動画]'; break;
-                            case 3: text = '[🎵 ボイスメッセージ]'; break;
-                            case 6: text = '[🎨 スタンプ]'; break;
-                            case 7: text = '[📍 位置情報]'; break;
-                            case 14: text = '[📄 ファイル]'; break;
-                            case 18: text = '[🖼️ アルバム]'; break;
-                            case 19: text = '[📝 ノート]'; break;
-                            default: text = '[メッセージ]'; break;
+                            case 0:
+                                text = rawText || '';
+                                break;
+                            case 1:
+                                text = '[📷 画像]';
+                                break;
+                            case 2:
+                                text = '[🎥 動画]';
+                                break;
+                            case 3:
+                                text = '[🎵 音声メッセージ]';
+                                break;
+                            case 6:
+                                text = '[🎨 スタンプ]';
+                                break;
+                            case 7:
+                                text = '[📍 位置情報]';
+                                break;
+                            default:
+                                text = (rawText && rawText.trim() !== '') ? rawText : '[📁 ファイル/システムメッセージ]';
+                                break;
                         }
                     }
 
-                    // 送信者名の解決（最優先: 自分 -> ユーザー辞書 -> トーク部屋名 -> フォールバック）
+                    // 送信者名の解決
                     let senderName = '相手';
                     if (isMe) {
                         senderName = '自分';
                     } else if (fileObj.userMap?.[senderId] || globalUserMap[senderId]) {
                         senderName = fileObj.userMap?.[senderId] || globalUserMap[senderId];
                     } else if (chatItem.name && !chatItem.name.startsWith('トーク相手')) {
-                        // 1対1トーク等で名前が既知の場合、自分以外の発言は相手の名前を補完
                         senderName = chatItem.name;
                     } else if (senderId) {
                         senderName = `ユーザー (${senderId.length > 6 ? senderId.slice(-4) : senderId})`;

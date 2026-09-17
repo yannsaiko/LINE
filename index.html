@@ -681,6 +681,9 @@
             }
         }
 
+        /* ----------------------------------------------------
+           動的なスキーマ判定
+        ---------------------------------------------------- */
         function detectSchema(db) {
             let tables = [];
             try {
@@ -824,52 +827,80 @@
         }
 
         /* ----------------------------------------------------
-           トークルーム取得:ご提示の SQL(LEFT JOIN ZCHAT) の構造を反映
+           安全装置付きトーク部屋取得（フォールバック構造）
         ---------------------------------------------------- */
         function fetchChatRooms(db, sch, userMap, chatMap, fileId, displayLabel) {
             if (!sch.msgTable) return [];
 
-            let query = '';
-            if (sch.type === 'iOS' && sch.chatTable) {
-                // ご提示されたSQLの考え方を採用：ZCHAT と LEFT JOIN
-                query = `
-                    SELECT 
-                        m.ZCHAT AS chat_id,
-                        COALESCE(c.ZNAME, '個人トーク') AS chat_name,
-                        COUNT(*) AS msg_count,
-                        MAX(m.${sch.timeCol}) AS last_time
-                    FROM ${sch.msgTable} m
-                    LEFT JOIN ${sch.chatTable} c ON m.ZCHAT = c.Z_PK
-                    WHERE m.ZCHAT IS NOT NULL
-                    GROUP BY m.ZCHAT
-                    ORDER BY last_time DESC
-                `;
-            } else {
-                query = `
-                    SELECT "${sch.chatCol}", COUNT(*), MAX("${sch.timeCol}")
-                    FROM "${sch.msgTable}"
-                    WHERE "${sch.chatCol}" IS NOT NULL AND "${sch.chatCol}" != ''
-                    GROUP BY "${sch.chatCol}"
-                    ORDER BY 3 DESC
-                `;
+            let res = null;
+
+            // 1. カラムの存在を調査して動的 JOIN クエリを試みる
+            if (sch.chatTable) {
+                try {
+                    const chatCols = db.exec(`PRAGMA table_info("${sch.chatTable}")`)[0]?.values.map(c => c[1].toUpperCase()) || [];
+                    const nameCol = ['ZNAME', 'ZTITLE', 'NAME', 'TITLE', 'ZCUSTOMNAME'].find(c => chatCols.includes(c));
+                    const pkCol = chatCols.includes('Z_PK') ? 'Z_PK' : (chatCols.includes('ROWID') ? 'ROWID' : null);
+
+                    if (nameCol && pkCol) {
+                        const q = `
+                            SELECT 
+                                m."${sch.chatCol}" AS chat_id,
+                                COALESCE(c."${nameCol}", '個人トーク') AS chat_name,
+                                COUNT(*) AS msg_count,
+                                MAX(m."${sch.timeCol}") AS last_time
+                            FROM "${sch.msgTable}" m
+                            LEFT JOIN "${sch.chatTable}" c ON m."${sch.chatCol}" = c."${pkCol}"
+                            WHERE m."${sch.chatCol}" IS NOT NULL AND m."${sch.chatCol}" != ''
+                            GROUP BY m."${sch.chatCol}"
+                            ORDER BY last_time DESC
+                        `;
+                        res = db.exec(q)[0];
+                    }
+                } catch(e) {
+                    console.warn("JOINクエリ実行エラーのため単体クエリにフォールバック:", e);
+                }
             }
 
-            let res;
-            try { res = db.exec(query)[0]; } catch(e) { return []; }
+            // 2. JOINクエリ失敗時の安全フォールバック（単体クエリ）
+            if (!res || !res.values) {
+                try {
+                    const q = `
+                        SELECT "${sch.chatCol}", COUNT(*), MAX("${sch.timeCol}")
+                        FROM "${sch.msgTable}"
+                        WHERE "${sch.chatCol}" IS NOT NULL AND "${sch.chatCol}" != ''
+                        GROUP BY "${sch.chatCol}"
+                        ORDER BY 3 DESC
+                    `;
+                    res = db.exec(q)[0];
+                } catch(e) {
+                    console.error("トークルーム一覧取得完全失敗:", e);
+                    return [];
+                }
+            }
+
             if (!res || !res.values) return [];
 
             return res.values.map(r => {
                 const chatId = String(r[0]).trim();
-                let name = r[1] && r[1] !== '個人トーク' ? String(r[1]) : (chatMap[chatId] || globalChatMap[chatId] || null);
-                const count = r[2] || r[1];
-                const rawTime = r[3] || r[2];
+                let name = null;
+                let count = 0;
+                let rawTime = null;
+
+                if (r.length >= 4) {
+                    name = r[1] && r[1] !== '個人トーク' ? String(r[1]) : null;
+                    count = r[2];
+                    rawTime = r[3];
+                } else {
+                    count = r[1];
+                    rawTime = r[2];
+                }
 
                 if (!name || name === '個人トーク') {
-                    if (userMap[chatId] || globalUserMap[chatId]) {
-                        name = userMap[chatId] || globalUserMap[chatId];
-                    } else {
-                        name = `個人トーク (${chatId})`;
-                    }
+                    name = chatMap[chatId] || globalChatMap[chatId] || userMap[chatId] || globalUserMap[chatId] || null;
+                }
+
+                if (!name) {
+                    name = `トーク部屋 (${chatId})`;
                 }
 
                 const dateObj = parseTimestamp(rawTime);
@@ -919,7 +950,7 @@
         }
 
         /* ----------------------------------------------------
-           メッセージ一括取得:ご提示の SQL をベースに直接 LEFT JOIN 実行
+           安全装置付きメッセージ取得（フォールバック構造）
         ---------------------------------------------------- */
         async function loadMessagesOnDemand(chatItem) {
             setProgressBar(true, 'メッセージを取得中...', 50, chatItem.name);
@@ -942,32 +973,61 @@
                 const sch = fileObj.schema;
 
                 const safeId = String(chatItem.id).replace(/'/g, "''");
-                
-                // ご提示の SQL をベースにしたメッセージ抽出クエリ
-                let query = '';
-                if (sch.type === 'iOS' && sch.userTable) {
-                    query = `
-                        SELECT
-                            m.${sch.textCol} AS ZTEXT,
-                            m.${sch.senderCol} AS ZSENDER,
-                            m.${sch.timeCol} AS ZTIMESTAMP,
-                            u.ZNAME AS user_name,
-                            COALESCE(m.${sch.typeCol}, 0) AS msg_type
-                        FROM ${sch.msgTable} m
-                        LEFT JOIN ${sch.userTable} u ON m.${sch.senderCol} = u.Z_PK
-                        WHERE CAST(m.${sch.chatCol} AS TEXT) = '${safeId}'
-                        ORDER BY m.${sch.timeCol} ASC
-                    `;
-                } else {
-                    query = `
-                        SELECT "${sch.textCol}", NULL, "${sch.senderCol}", "${sch.timeCol}", "${sch.typeCol || sch.textCol}"
-                        FROM "${sch.msgTable}"
-                        WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}'
-                        ORDER BY "${sch.timeCol}" ASC
-                    `;
+                let res = null;
+
+                // 1. ZUSER との JOIN クエリを試みる
+                if (sch.userTable) {
+                    try {
+                        const userCols = db.exec(`PRAGMA table_info("${sch.userTable}")`)[0]?.values.map(c => c[1].toUpperCase()) || [];
+                        const userNameCol = ['ZCUSTOMNAME', 'ZNAME', 'NAME', 'ZADDRESSBOOKNAME', 'DISPLAY_NAME'].find(c => userCols.includes(c));
+                        const userPkCol = userCols.includes('Z_PK') ? 'Z_PK' : (userCols.includes('ROWID') ? 'ROWID' : null);
+
+                        const msgCols = db.exec(`PRAGMA table_info("${sch.msgTable}")`)[0]?.values.map(c => c[1].toUpperCase()) || [];
+                        const hasTypeCol = sch.typeCol && msgCols.includes(sch.typeCol.toUpperCase());
+                        const typeSelect = hasTypeCol ? `m."${sch.typeCol}"` : '0';
+
+                        if (userNameCol && userPkCol) {
+                            const q = `
+                                SELECT
+                                    m."${sch.textCol}" AS ZTEXT,
+                                    m."${sch.senderCol}" AS ZSENDER,
+                                    m."${sch.timeCol}" AS ZTIMESTAMP,
+                                    u."${userNameCol}" AS user_name,
+                                    ${typeSelect} AS msg_type
+                                FROM "${sch.msgTable}" m
+                                LEFT JOIN "${sch.userTable}" u ON m."${sch.senderCol}" = u."${userPkCol}"
+                                WHERE CAST(m."${sch.chatCol}" AS TEXT) = '${safeId}'
+                                ORDER BY m."${sch.timeCol}" ASC
+                            `;
+                            res = db.exec(q)[0];
+                        }
+                    } catch(e) {
+                        console.warn("メッセージJOINクエリ実行エラーのため単体クエリにフォールバック:", e);
+                    }
                 }
 
-                let res = db.exec(query)[0];
+                // 2. JOINクエリ失敗時の安全フォールバック（単体クエリ）
+                if (!res || !res.values) {
+                    try {
+                        const msgCols = db.exec(`PRAGMA table_info("${sch.msgTable}")`)[0]?.values.map(c => c[1].toUpperCase()) || [];
+                        const hasTypeCol = sch.typeCol && msgCols.includes(sch.typeCol.toUpperCase());
+                        const typeSelect = hasTypeCol ? `"${sch.typeCol}"` : '0';
+
+                        const q = `
+                            SELECT "${sch.textCol}", "${sch.senderCol}", "${sch.timeCol}", NULL AS user_name, ${typeSelect} AS msg_type
+                            FROM "${sch.msgTable}"
+                            WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}'
+                            ORDER BY "${sch.timeCol}" ASC
+                        `;
+                        res = db.exec(q)[0];
+                    } catch(e) {
+                        console.error("メッセージ取得エラー:", e);
+                        setProgressBar(false);
+                        alert("メッセージの取得に失敗しました: " + e.message);
+                        return;
+                    }
+                }
+
                 db.close();
                 db = null;
 
@@ -983,7 +1043,6 @@
                     const joinedUserName = r[3];
                     const msgType = Number(r[4]);
 
-                    // ご提示クエリと同等判定: ZSENDER IS NULL (または空) なら自分
                     const isMe = (!senderId || senderId === '' || senderId === '0' || senderId === 'null');
 
                     let text = rawText;
@@ -996,7 +1055,6 @@
                         else text = '[メッセージ (スタンプ/写真/ファイル)]';
                     }
 
-                    // 送信者名の判定（SQL JOIN 結果の u.ZNAME、または辞書、またはトーク名）
                     let senderName = '相手';
                     if (isMe) {
                         senderName = '自分';
@@ -1004,7 +1062,7 @@
                         senderName = String(joinedUserName).trim();
                     } else if (fileObj.userMap?.[senderId] || globalUserMap[senderId]) {
                         senderName = fileObj.userMap?.[senderId] || globalUserMap[senderId];
-                    } else if (chatItem.name && !chatItem.name.startsWith('個人トーク')) {
+                    } else if (chatItem.name && !chatItem.name.startsWith('トーク部屋') && !chatItem.name.startsWith('個人トーク')) {
                         senderName = chatItem.name;
                     }
 
@@ -1267,9 +1325,6 @@
             window.print();
         }
 
-        /* ----------------------------------------------------
-           ZTIMESTAMP タイムスタンプ解析処理 (ご提示の /1000 処理に対応)
-        ---------------------------------------------------- */
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;
             
@@ -1281,26 +1336,17 @@
             let num = Number(ts);
             if (isNaN(num) || num === 0) return null;
 
-            const appleEpochMs = 978307200000; // Apple Core Data Epoch (2001-01-01)
+            const appleEpochMs = 978307200000;
 
-            // 超大数の補正
             while (num > 2.5e12) {
                 num = Math.floor(num / 1000);
             }
 
-            // 1. Unix タイムスタンプ（ミリ秒）: 例 1700000000000
             if (num >= 1200000000000 && num <= 2500000000000) return new Date(num);
-
-            // 2. Unix タイムスタンプ（秒 / 1000 済み）: 例 1700000000
             if (num >= 1200000000 && num <= 2500000000) return new Date(num * 1000);
-
-            // 3. Apple Core Data タイムスタンプ（ミリ秒）
             if (num >= 300000000000 && num <= 1300000000000) return new Date(appleEpochMs + num);
-
-            // 4. Apple Core Data タイムスタンプ（秒）
             if (num >= 300000000 && num <= 1300000000) return new Date(appleEpochMs + (num * 1000));
 
-            // フォールバック
             const directDate = new Date(num);
             if (!isNaN(directDate.getTime()) && directDate.getFullYear() >= 2008 && directDate.getFullYear() <= 2040) return directDate;
 

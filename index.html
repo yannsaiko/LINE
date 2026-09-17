@@ -585,14 +585,12 @@
                     }
                     if (/^(保存日時|Saved|日時)：/i.test(line)) continue;
 
-                    // 日付ヘッダーの検出（例: 2023/05/20(土), 2023.05.20 Sat, 2023年05月20日）
                     const dateMatch = line.match(/^(\d{4}[\/\.-年]\d{1,2}[\/\.-月]\d{1,2}日?(?:\([\s\S]*?\)|[（][\s\S]*?[）]|[A-Za-z]+|[日月火水木金土]曜日?)?)/);
                     if (dateMatch && !line.includes('\t')) {
                         currentDate = dateMatch[1];
                         continue;
                     }
 
-                    // TAB区切り行のパース（2箇所のTABで時間・送信者・テキスト、または1箇所のTABで時間・システムメッセージ）
                     const parts = line.split('\t');
                     if (parts.length >= 2) {
                         const timeCandidate = parts[0].trim();
@@ -624,7 +622,6 @@
                         }
                     }
 
-                    // 複数行メッセージの継続処理
                     if (currentMsg) {
                         currentMsg.text += '\n' + line;
                     }
@@ -685,12 +682,16 @@
             }
         }
 
+        /* ----------------------------------------------------
+           ZMESSAGE スキーマ構造に対応させた検出処理
+        ---------------------------------------------------- */
         function detectSchema(db) {
             let tables = [];
             try {
                 tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'")[0]?.values.map(r => r[0]) || [];
             } catch(e) { return {}; }
 
+            // iOS版LINE のテーブル判定 (ZMESSAGE, ZUSER, ZCHAT)
             const iosMsgTable = tables.find(t => /^ZMESSAGE$/i.test(t) || /^ZSTOREDMESSAGE$/i.test(t) || /^Z_MESSAGE$/i.test(t));
             const iosUserTable = tables.find(t => /^ZUSER$/i.test(t) || /^ZUSERHEADER$/i.test(t) || /^ZCONTACT$/i.test(t));
             const iosChatTable = tables.find(t => /^ZCHAT$/i.test(t));
@@ -705,15 +706,18 @@
                     msgTable: iosMsgTable,
                     chatCol: cols.find(c => /^ZCHAT$/i.test(c) || /^ZCHATID$/i.test(c)) || 'ZCHAT',
                     textCol: cols.find(c => /^ZTEXT$/i.test(c) || /^ZBODY$/i.test(c)) || 'ZTEXT',
-                    timeCol: cols.find(c => /^ZCREATEDTIME$/i.test(c) || /^ZDATE$/i.test(c)) || 'ZCREATEDTIME',
+                    // ZTIMESTAMP を優先的に判定
+                    timeCol: cols.find(c => /^ZTIMESTAMP$/i.test(c) || /^ZCREATEDTIME$/i.test(c) || /^ZDATE$/i.test(c)) || 'ZTIMESTAMP',
                     isMeCol: cols.find(c => /^ZISFROMME$/i.test(c) || /^ZIS_ME$/i.test(c)) || null,
                     senderCol: cols.find(c => /^ZSENDER$/i.test(c) || /^ZSENDERID$/i.test(c)) || 'ZSENDER',
-                    typeCol: cols.find(c => /^ZCONTENTTYPE$/i.test(c) || /^ZTYPE$/i.test(c)) || 'ZCONTENTTYPE',
+                    // ZTYPE / ZCONTENTTYPE を判定
+                    typeCol: cols.find(c => /^ZTYPE$/i.test(c) || /^ZCONTENTTYPE$/i.test(c)) || 'ZTYPE',
                     userTable: iosUserTable,
                     chatTable: iosChatTable
                 };
             }
 
+            // Android版LINEの構成
             const androidMsgTable = tables.find(t => /^chat_history$/i.test(t) || /^messages$/i.test(t));
             const androidUserTable = tables.find(t => /contacts|friends|users/i.test(t));
             const androidChatTable = tables.find(t => /^chat$|^groups$/i.test(t));
@@ -846,7 +850,6 @@
                 let name = chatMap[chatId] || globalChatMap[chatId] || null;
                 const safeId = chatId.replace(/'/g, "''");
 
-                // 1. ZCHAT テーブルから ZUSER 参照または ZMID 参照で相手名を正確に再検索
                 if (!name && sch.chatTable) {
                     try {
                         const chatTableInfo = db.exec(`PRAGMA table_info("${sch.chatTable}")`)[0]?.values.map(c => c[1].toUpperCase()) || [];
@@ -878,7 +881,6 @@
                     } catch(e){}
                 }
 
-                // 2. トーク内のメッセージ送信者ID (ZSENDER) から相手の名前を特定
                 if (!name && sch.senderCol) {
                     try {
                         const senderQ = `
@@ -950,6 +952,9 @@
             });
         }
 
+        /* ----------------------------------------------------
+           ZMESSAGE のカラム抽出と自分/相手・メッセージ種別の解析処理
+        ---------------------------------------------------- */
         async function loadMessagesOnDemand(chatItem) {
             setProgressBar(true, 'メッセージを取得中...', 50, chatItem.name);
             await yieldToUI(30);
@@ -994,6 +999,7 @@
                     const rawTime = r[3];
                     const msgType = Number(r[4]);
 
+                    // 送信者判定：ZSENDER が NULL/空/0 または ZISFROMME = 1 の場合は「自分」
                     let isMe = false;
                     if (isMeVal !== null && isMeVal !== undefined) {
                         isMe = (Number(isMeVal) === 1 || isMeVal === true || String(isMeVal) === '1');
@@ -1001,14 +1007,15 @@
                         isMe = (!senderId || senderId === '0' || senderId === '' || senderId === 'null');
                     }
 
+                    // メッセージ種別 (ZTYPE / ZCONTENTTYPE) のテキスト変換マッピング
                     let text = rawText;
                     if (!text || text.trim() === '') {
                         if (msgType === 1) text = '[📷 画像]';
                         else if (msgType === 2) text = '[🎥 動画]';
                         else if (msgType === 3) text = '[🎵 音声メッセージ]';
-                        else if (msgType === 6) text = '[📍 位置情報]';
-                        else if (msgType === 7) text = '[🎨 スタンプ]';
-                        else text = '[メッセージ (スタンプ/写真/システム)]';
+                        else if (msgType === 6) text = '[🎨 スタンプ]';
+                        else if (msgType === 7) text = '[📍 位置情報]';
+                        else text = '[メッセージ (スタンプ/写真/ファイル)]';
                     }
 
                     let senderName = '相手';
@@ -1281,6 +1288,9 @@
             window.print();
         }
 
+        /* ----------------------------------------------------
+           ZTIMESTAMP (Unix / Apple Epoch Core Data) 変換処理
+        ---------------------------------------------------- */
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;
             
@@ -1292,26 +1302,26 @@
             let num = Number(ts);
             if (isNaN(num) || num === 0) return null;
 
-            const appleEpochMs = 978307200000; // 2001-01-01T00:00:00Z (Apple Epoch)
+            const appleEpochMs = 978307200000; // 2001-01-01T00:00:00Z (Core Data Epoch)
 
-            // マイクロ秒・ナノ秒単位などの超大数値をミリ秒に調整
+            // 16桁以上のナノ秒表記等をミリ秒単位に補正
             while (num > 2.5e12) {
                 num = Math.floor(num / 1000);
             }
 
-            // ケース 1: Unix エポック (ミリ秒) -> 2014年〜2049年
-            if (num >= 1400000000000 && num <= 2500000000000) return new Date(num);
+            // 1. Unix タイムスタンプ (ミリ秒) -> 例: 1700000000000 (2023年頃)
+            if (num >= 1200000000000 && num <= 2500000000000) return new Date(num);
 
-            // ケース 2: Unix エポック (秒) -> 2014年〜2049年
-            if (num >= 1400000000 && num <= 2500000000) return new Date(num * 1000);
+            // 2. Unix タイムスタンプ (秒) -> 例: 1700000000
+            if (num >= 1200000000 && num <= 2500000000) return new Date(num * 1000);
 
-            // ケース 3: Apple エポック (ミリ秒) -> 2010年〜2042年
+            // 3. Core Data / Apple Epoch (ミリ秒)
             if (num >= 300000000000 && num <= 1300000000000) return new Date(appleEpochMs + num);
 
-            // ケース 4: Apple エポック (秒) -> 2010年〜2042年
+            // 4. Core Data / Apple Epoch (秒)
             if (num >= 300000000 && num <= 1300000000) return new Date(appleEpochMs + (num * 1000));
 
-            // フォールバック判定
+            // フォールバック
             const directDate = new Date(num);
             if (!isNaN(directDate.getTime()) && directDate.getFullYear() >= 2008 && directDate.getFullYear() <= 2040) return directDate;
 

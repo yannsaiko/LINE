@@ -26,7 +26,7 @@
         .room-name { font-size: 13px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .room-count { font-size: 11px; color: #64748b; background: #e2e8f0; padding: 2px 6px; border-radius: 10px; }
         
-        .content-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #abc1d1; }
+        .content-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #abc1d1; position: relative; }
         .chat-header { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 10px 16px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center; }
         .chat-title { font-size: 15px; font-weight: bold; }
         
@@ -43,10 +43,9 @@
         .msg-bubble { background: white; padding: 8px 12px; border-radius: 14px; font-size: 13px; line-height: 1.4; color: #0f172a; word-break: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .msg-time { font-size: 10px; color: #475569; flex-shrink: 0; }
         
-        .msg-own { align-items: flex-end; }
-        .msg-own .msg-body { flex-direction: row-reverse; }
-        .msg-own .msg-bubble { background: #85e249; color: #0f172a; }
-        
+        /* Drop Target Overlay */
+        .drag-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(6, 199, 85, 0.85); color: white; display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 500; font-size: 20px; font-weight: bold; backdrop-filter: blur(4px); }
+
         /* Modal & Settings Panel */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
         .modal-content { background: white; border-radius: 12px; width: 90%; max-width: 750px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
@@ -74,7 +73,11 @@
         <h1>LINE トーク解析 & AIアシスタント</h1>
         <div class="header-btns">
             <label class="btn-upload">
-                📂 履歴ファイル選択
+                📁 フォルダー選択
+                <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none;" onchange="handleFileSelect(event)">
+            </label>
+            <label class="btn-upload">
+                📄 ファイル選択
                 <input type="file" id="file-input" accept=".txt,.db,.sqlite" multiple style="display:none;" onchange="handleFileSelect(event)">
             </label>
             <button onclick="openAiModal()">🤖 AIマルチ分析</button>
@@ -85,11 +88,16 @@
         <div class="sidebar">
             <div class="sidebar-header">トークルーム (<span id="room-count">0</span>)</div>
             <div class="room-list" id="room-list-container">
-                <div style="padding:20px; text-align:center; color:#94a3b8; font-size:12px;">LINEのトーク履歴(.txt)を読み込んでください。</div>
+                <div style="padding:20px; text-align:center; color:#94a3b8; font-size:12px; line-height:1.6;">
+                    ファイルまたはフォルダーを選択するか、ここにドラッグ＆ドロップしてください。
+                </div>
             </div>
         </div>
 
-        <div class="content-area">
+        <div class="content-area" id="drop-zone">
+            <div class="drag-overlay" id="drag-overlay">
+                📂 ここにファイルやフォルダーをドロップ
+            </div>
             <div class="chat-header">
                 <div class="chat-title" id="current-room-title">トークを選択してください</div>
             </div>
@@ -179,11 +187,10 @@
 
     <script>
         // グローバル状態
-        let chatRooms = []; // { id, name, messages: [{id, sender, time, date, text, rawTimestamp}] }
+        let chatRooms = [];
         let currentRoomId = null;
         let latestAiResultText = '';
 
-        // デフォルトモデル設定
         const MODEL_OPTIONS = {
             gemini: [
                 { val: 'gemini-2.5-flash', text: 'Gemini 2.5 Flash (推奨・高速)' },
@@ -200,25 +207,87 @@
             ]
         };
 
-        // 初期化処理
         window.addEventListener('DOMContentLoaded', () => {
             onProviderChange();
             loadSavedApiConfig();
+            setupDragAndDrop();
         });
 
-        // 1. ファイル読み込み＆パース
+        // 1. ファイル & フォルダー読み込み
         function handleFileSelect(event) {
             const files = event.target.files;
             if (!files || files.length === 0) return;
 
             Array.from(files).forEach(file => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const text = e.target.result;
-                    parseLineTxt(file.name, text);
-                };
-                reader.readAsText(file, 'UTF-8');
+                if (isSupportedFile(file.name)) {
+                    readAndParseFile(file);
+                }
             });
+        }
+
+        function isSupportedFile(filename) {
+            return filename.endsWith('.txt');
+        }
+
+        function readAndParseFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                parseLineTxt(file.name, e.target.result);
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        // ドラッグ＆ドロップ機能の実装
+        function setupDragAndDrop() {
+            const overlay = document.getElementById('drag-overlay');
+
+            window.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                overlay.style.display = 'flex';
+            });
+
+            window.addEventListener('dragleave', (e) => {
+                if (e.clientX <= 0 || e.clientY <= 0) {
+                    overlay.style.display = 'none';
+                }
+            });
+
+            window.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                overlay.style.display = 'none';
+
+                const items = e.dataTransfer.items;
+                if (items) {
+                    for (let i = 0; i < items.length; i++) {
+                        const item = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+                        if (item) {
+                            traverseFileTree(item);
+                        } else {
+                            const file = items[i].getAsFile();
+                            if (file && isSupportedFile(file.name)) readAndParseFile(file);
+                        }
+                    }
+                } else {
+                    Array.from(e.dataTransfer.files).forEach(file => {
+                        if (isSupportedFile(file.name)) readAndParseFile(file);
+                    });
+                }
+            });
+        }
+
+        function traverseFileTree(item) {
+            if (item.isFile) {
+                item.file(file => {
+                    if (isSupportedFile(file.name)) readAndParseFile(file);
+                });
+            } else if (item.isDirectory) {
+                const dirReader = item.createReader();
+                dirReader.readEntries(entries => {
+                    for (let i = 0; i < entries.length; i++) {
+                        traverseFileTree(entries[i]);
+                    }
+                });
+            }
         }
 
         function parseLineTxt(fileName, content) {
@@ -262,7 +331,6 @@
                         text: text
                     });
                 } else if (messages.length > 0) {
-                    // 複数行メッセージの結合
                     messages[messages.length - 1].text += '\n' + line;
                 }
             }
@@ -313,7 +381,7 @@
                 }
 
                 const msgDiv = document.createElement('div');
-                msgDiv.id = msg.id; // アンカー用ID設定
+                msgDiv.id = msg.id;
                 msgDiv.className = 'message-row';
 
                 msgDiv.innerHTML = `
@@ -327,7 +395,7 @@
             });
         }
 
-        // 2. 特定のメッセージへスルー＆ハイライトジャンプ
+        // 2. トークジャンプ機能
         function jumpToMessage(msgId) {
             const el = document.getElementById(msgId);
             if (el) {
@@ -339,7 +407,7 @@
             }
         }
 
-        // 3. API設定＆認証情報の永続化 (localStorage)
+        // 3. API設定＆保存
         function onProviderChange() {
             const provider = document.getElementById('api-provider').value;
             const select = document.getElementById('ai-model-select');
@@ -390,7 +458,7 @@
             } catch (e) {}
         }
 
-        // 4. AI分析＆ジャンプリンク変換の実行
+        // 4. AI分析＆ジャンプリンク付き出力
         function openAiModal() {
             document.getElementById('ai-modal').style.display = 'flex';
         }
@@ -405,7 +473,6 @@
         }
 
         async function runAiAnalysis() {
-            const savedConfig = localStorage.getItem('line_ai_config');
             const apiKey = document.getElementById('api-key-input').value.trim();
             const provider = document.getElementById('api-provider').value;
             const model = document.getElementById('ai-model-select').value;
@@ -430,7 +497,6 @@
             resultContainer.style.display = 'block';
             resultBox.innerText = '🤖 AIが会話データを解析中...';
 
-            // プロンプト構築（メッセージID含めるように指示）
             let promptText = "以下はLINEのトーク履歴データです。回答内で特定の会話部分を引用・言及する場合は、必ずメッセージのID形式 `[#msg-xxx]` または `#msg-xxx` を記載してください。\n\n";
             targetRooms.forEach(room => {
                 promptText += `--- トークルーム: ${room.name} ---\n`;
@@ -487,8 +553,6 @@
                 }
 
                 latestAiResultText = aiResponseText;
-                
-                // 回答内の [#msg-xxx] や #msg-xxx をジャンプ可能リンクに変換して表示
                 renderAiResultWithJumps(aiResponseText);
 
             } catch (err) {
@@ -500,7 +564,6 @@
             const box = document.getElementById('ai-result-box');
             let html = escapeHtml(rawText);
 
-            // [#msg-xxx] または #msg-xxx の正規表現パターンを置換
             const idPattern = /\[?#(msg-\d+-\w+)\]?/g;
             html = html.replace(idPattern, (match, id) => {
                 return `<a class="chat-jump-btn" onclick="jumpToMessage('${id}')">🔗 該当トークへ (${id})</a>`;

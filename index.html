@@ -247,7 +247,6 @@
         }
         .ai-room-item:last-child { border-bottom: none; }
 
-        /* 履歴カード用スタイル */
         .history-card {
             background: #ffffff;
             border: 1px solid #e2e8f0;
@@ -297,7 +296,6 @@
                 border: 1px solid #ddd !important;
             }
 
-            /* AI印刷時の専用レイアウト制御 */
             body.print-hide-chat #messages-container,
             body.print-hide-chat #chat-header,
             body.print-hide-chat #official-text-print-view {
@@ -522,13 +520,11 @@
                 <span style="cursor:pointer;" onclick="closeAiModal()">✕</span>
             </div>
 
-            <!-- タブ切り替えボタン -->
             <div style="display:flex; gap:8px; margin-bottom:14px; border-bottom:2px solid #edf2f7; padding-bottom:8px;">
                 <button id="ai-tab-btn-run" class="btn-small active" onclick="switchAiTab('run')">✨ AI分析実行</button>
                 <button id="ai-tab-btn-history" class="btn-small" onclick="switchAiTab('history')">📜 分析履歴 (<span id="ai-history-count">0</span>)</button>
             </div>
 
-            <!-- AI分析実行タブ -->
             <div id="ai-tab-run-content">
                 <div class="option-group">
                     <span class="option-label">🔑 Google Gemini API キー</span>
@@ -614,7 +610,6 @@
                 </div>
             </div>
 
-            <!-- 分析履歴タブ -->
             <div id="ai-tab-history-content" style="display:none;">
                 <div id="ai-history-list" style="max-height:480px; overflow-y:auto;"></div>
             </div>
@@ -1481,8 +1476,6 @@
             if (box && !box.contains(e.target) && dropdown) dropdown.style.display = 'none';
         });
 
-        /* --- 印刷機能エリア --- */
-
         function openPrintModal() {
             if (!activeChat) {
                 alert('印刷対象のトークを選択してください。');
@@ -1554,7 +1547,6 @@
                 else div.classList.remove('has-selected-msg');
             });
 
-            // AI分析結果の印刷領域を準備
             const aiContainer = document.getElementById('ai-print-only-container');
             if (optIncludeAi && latestAiResultText) {
                 aiContainer.innerHTML = `<b>🤖 【AI分析結果】</b><br><br>${escapeHtml(latestAiResultText).replace(/\n/g, '<br>')}`;
@@ -1611,8 +1603,6 @@
             closePrintModal();
             window.print();
         }
-
-        /* --- AI分析 & 履歴管理エリア --- */
 
         function openAiModal() {
             if (allChatRooms.length === 0) {
@@ -1931,7 +1921,6 @@
                     latestAiResultText = aiResponseText;
                     resultBox.innerText = aiResponseText;
 
-                    // 自動的に履歴に保存
                     saveAiHistoryRecord({
                         id: 'ai_hist_' + Date.now(),
                         timestamp: new Date().toLocaleString(),
@@ -1966,8 +1955,6 @@
             URL.revokeObjectURL(url);
         }
 
-        /* --- 履歴管理ストレージ機能 --- */
-
         function loadAiHistoryFromStorage() {
             try {
                 const stored = localStorage.getItem('line_ai_analysis_history');
@@ -1980,7 +1967,7 @@
 
         function saveAiHistoryRecord(record) {
             aiHistory.unshift(record);
-            if (aiHistory.length > 30) aiHistory.pop(); // 最大30件
+            if (aiHistory.length > 30) aiHistory.pop();
             try {
                 localStorage.setItem('line_ai_analysis_history', JSON.stringify(aiHistory));
             } catch(e) {}
@@ -2074,55 +2061,61 @@
 
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;
-            
-            if (typeof ts === 'number' || !isNaN(Number(ts))) {
-                let num = Number(ts);
-                // iOS Cocoa Epoch (2001-01-01 秒単位)
-                if (num > 100000000 && num < 1200000000) {
-                    return new Date((num + 978307200) * 1000);
-                }
-                // Unix epoch (ミリ秒単位)
-                if (num >= 1000000000000) {
-                    if (num > 1e14) num = Math.floor(num / 1e6); // ナノ秒変換
-                    return new Date(num);
-                }
-                // Unix epoch (秒単位)
-                if (num >= 1000000000) {
-                    return new Date(num * 1000);
-                }
-                // 小さい正の値（Cocoa Epoch等）
-                if (num > 0) {
-                    return new Date((num + 978307200) * 1000);
-                }
+            let val = Number(ts);
+            if (isNaN(val)) {
+                let d = new Date(ts);
+                return isNaN(d.getTime()) ? null : d;
             }
 
-            const d = new Date(ts);
+            // Cocoa Epoch (2001-01-01 00:00:00 UTC) 補正: 978307200秒
+            const COCOA_OFFSET_SEC = 978307200;
+
+            if (val > 1e16) {
+                // Nanoseconds (Cocoa/Unix)
+                val = val / 1e6 + COCOA_OFFSET_SEC * 1000;
+            } else if (val > 1e11) {
+                // Milliseconds
+                if (val < 1e12) {
+                    val = val + COCOA_OFFSET_SEC * 1000;
+                }
+            } else if (val > 1e8) {
+                // Seconds
+                if (val < 1e9) {
+                    val = (val + COCOA_OFFSET_SEC) * 1000;
+                } else {
+                    val = val * 1000;
+                }
+            } else {
+                return null;
+            }
+
+            let d = new Date(val);
             return isNaN(d.getTime()) ? null : d;
         }
 
         function formatDate(d) {
-            if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+            if (!d) return '';
             const y = d.getFullYear();
             const m = String(d.getMonth() + 1).padStart(2, '0');
             const day = String(d.getDate()).padStart(2, '0');
             return `${y}/${m}/${day}`;
         }
 
-        function formatTime(d) {
-            if (!(d instanceof Date) || isNaN(d.getTime())) return '';
-            const h = String(d.getHours()).padStart(2, '0');
-            const m = String(d.getMinutes()).padStart(2, '0');
-            return `${h}:${m}`;
-        }
-
         function formatDateHeader(d) {
-            if (!(d instanceof Date) || isNaN(d.getTime())) return '日時不明';
-            const weeks = ['日', '月', '火', '水', '木', '金', '土'];
+            if (!d) return '日時不明';
+            const days = ['日', '月', '火', '水', '木', '金', '土'];
             const y = d.getFullYear();
             const m = d.getMonth() + 1;
             const day = d.getDate();
-            const w = weeks[d.getDay()];
-            return `${y}年${m}月${day}日(${w})`;
+            const dw = days[d.getDay()];
+            return `${y}年${m}月${day}日(${dw})`;
+        }
+
+        function formatTime(d) {
+            if (!d) return '';
+            const h = String(d.getHours()).padStart(2, '0');
+            const m = String(d.getMinutes()).padStart(2, '0');
+            return `${h}:${m}`;
         }
 
         function escapeHtml(str) {

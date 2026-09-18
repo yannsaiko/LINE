@@ -72,6 +72,7 @@
         .sidebar-label { font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 2px; display: block; }
         select.styled-select, input.styled-input { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; background: white; appearance: none; -webkit-appearance: none; outline: none; transition: border-color 0.2s; }
         select.styled-select:focus, input.styled-input:focus { border-color: #06c755; }
+        select.styled-select:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
         
         .add-files-bar { display: flex; gap: 6px; }
         .btn-small { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; transition: background 0.15s; }
@@ -471,6 +472,13 @@
                     ※一度入力すれば次回以降も自動保存されます。<br>
                     キーをお持ちでない方は <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio (無料)</a> で取得するか、「プロンプトをコピー」をご利用ください。
                 </div>
+            </div>
+
+            <div class="option-group">
+                <span class="option-label">🤖 使用するAIモデル</span>
+                <select id="ai-model-select" class="styled-select" disabled>
+                    <option value="">🔒 APIキー認証確認後に選択可能になります</option>
+                </select>
             </div>
             
             <div class="option-group">
@@ -1490,6 +1498,11 @@
             }
             renderAiRoomChecklist();
             document.getElementById('ai-modal').style.display = 'flex';
+            
+            const savedKey = document.getElementById('ai-api-key').value.trim();
+            if (savedKey && document.getElementById('ai-model-select').disabled) {
+                checkApiKeyAuth();
+            }
         }
 
         function closeAiModal() {
@@ -1503,10 +1516,13 @@
         async function checkApiKeyAuth() {
             const apiKey = document.getElementById('ai-api-key').value.trim();
             const statusEl = document.getElementById('ai-auth-status');
+            const modelSelect = document.getElementById('ai-model-select');
             
             if (!apiKey) {
                 statusEl.style.color = '#e11d48';
                 statusEl.innerText = '⚠️ APIキーを入力してください。';
+                modelSelect.disabled = true;
+                modelSelect.innerHTML = '<option value="">🔒 APIキー認証確認後に選択可能になります</option>';
                 return;
             }
 
@@ -1518,17 +1534,48 @@
                 const response = await fetch(endpoint);
 
                 if (response.ok) {
+                    const data = await response.json();
+                    modelSelect.innerHTML = '';
+
+                    let contentModels = (data.models || []).filter(m => 
+                        m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent')
+                    );
+
+                    if (contentModels.length === 0) {
+                        contentModels = [
+                            { name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' },
+                            { name: 'models/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro' },
+                            { name: 'models/gemini-1.5-flash', displayName: 'Gemini 1.5 Flash' }
+                        ];
+                    }
+
+                    contentModels.forEach(m => {
+                        const opt = document.createElement('option');
+                        const modelId = m.name.replace(/^models\//, '');
+                        opt.value = modelId;
+                        opt.innerText = `${m.displayName || modelId} (${modelId})`;
+                        if (modelId.includes('2.5-flash') || modelId.includes('1.5-flash')) {
+                            opt.selected = true;
+                        }
+                        modelSelect.appendChild(opt);
+                    });
+
+                    modelSelect.disabled = false;
                     statusEl.style.color = '#059669';
-                    statusEl.innerText = '✅ API認証成功！ (Gemini APIと正常に通信できました)';
+                    statusEl.innerText = '✅ API認証成功！利用可能なAIモデルを選択できます。';
                 } else {
                     const errData = await response.json().catch(() => ({}));
                     const msg = errData.error?.message || `ステータスコード: ${response.status}`;
                     statusEl.style.color = '#e11d48';
                     statusEl.innerText = `❌ 認証失敗: ${msg}`;
+                    modelSelect.disabled = true;
+                    modelSelect.innerHTML = '<option value="">🔒 APIキー認証失敗</option>';
                 }
             } catch (err) {
                 statusEl.style.color = '#e11d48';
                 statusEl.innerText = '❌ 通信エラー: ネットワーク接続をご確認ください。';
+                modelSelect.disabled = true;
+                modelSelect.innerHTML = '<option value="">🔒 通信エラー</option>';
             }
         }
 
@@ -1691,18 +1738,26 @@
                 return;
             }
 
+            const modelSelect = document.getElementById('ai-model-select');
+            const selectedModel = modelSelect.value || 'gemini-2.5-flash';
+
+            if (!selectedModel || modelSelect.disabled) {
+                alert('最初に「認証確認」ボタンを押してAPI認証を行い、AIモデルを選択してください。');
+                return;
+            }
+
             saveApiKey(apiKey);
 
             const resultContainer = document.getElementById('ai-result-container');
             const resultBox = document.getElementById('ai-result-box');
             
             resultContainer.style.display = 'block';
-            resultBox.innerText = '🤖 AIが会話データにアクセスし、自由に思考・分析中... 少々お待ちください。';
+            resultBox.innerText = `🤖 モデル [${selectedModel}] が会話データにアクセスし、分析中... 少々お待ちください。`;
 
             try {
                 const prompt = await buildFullPrompt();
 
-                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -1715,7 +1770,7 @@
                 });
 
                 if (!response.ok) {
-                    const errData = await response.json();
+                    const errData = await response.json().catch(() => ({}));
                     throw new Error(errData.error?.message || `APIエラー (${response.status})`);
                 }
 
@@ -1730,40 +1785,48 @@
 
             } catch (err) {
                 setProgressBar(false);
-                resultBox.innerText = '❌ 分析失敗: ' + err.message + '\n\nAPIキーが正しいか、選択したトークのデータ量をご確認ください。';
+                resultBox.innerText = '❌ 分析失敗: ' + err.message + '\n\nAPIキーが正しいか、選択したモデル・データ量をご確認ください。';
             }
         }
 
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;
             
-            if (typeof ts === 'string' && (ts.includes('-') || ts.includes('/') || ts.includes('T'))) {
-                const d = new Date(ts);
-                if (!isNaN(d.getTime())) return d;
+            if (typeof ts === 'number') {
+                if (ts > 100000000 && ts < 2000000000) {
+                    if (ts < 1000000000) {
+                        return new Date((ts + 978307200) * 1000);
+                    }
+                    return new Date(ts * 1000);
+                }
+                if (ts > 1000000000000000) {
+                    if (ts > 1000000000000000000) {
+                        return new Date((ts / 1e9 + 978307200) * 1000);
+                    }
+                    return new Date(ts / 1000);
+                }
+                if (ts > 100000000000) {
+                    return new Date(ts);
+                }
+                return new Date(ts * 1000);
             }
 
-            let n = Number(ts);
-            if (isNaN(n)) return null;
-
-            // iOS Cocoa Core Data Absolute Time (seconds since 2001-01-01 00:00:00 UTC)
-            // 2001-01-01 UTC = 978307200 Epoch Seconds
-            if (n > 100000000000000) { 
-                n = Math.floor(n / 1000000000); // Nanoseconds to Seconds
-            } else if (n > 100000000000) { 
-                return new Date(n); // Milliseconds (Unix)
+            if (typeof ts === 'string') {
+                const cleanTs = ts.trim();
+                const num = Number(cleanTs);
+                if (!isNaN(num) && cleanTs !== '') {
+                    return parseTimestamp(num);
+                }
+                const parsedDate = new Date(cleanTs.replace(/-/g, '/'));
+                if (!isNaN(parsedDate.getTime())) {
+                    return parsedDate;
+                }
             }
-
-            if (n < 978307200) {
-                // Cocoa Epoch -> Unix Epoch
-                return new Date((n + 978307200) * 1000);
-            }
-
-            // Unix Epoch in seconds
-            return new Date(n * 1000);
+            return null;
         }
 
         function formatDate(d) {
-            if (!d || isNaN(d.getTime())) return '';
+            if (!(d instanceof Date) || isNaN(d.getTime())) return '';
             const y = d.getFullYear();
             const m = String(d.getMonth() + 1).padStart(2, '0');
             const day = String(d.getDate()).padStart(2, '0');
@@ -1771,24 +1834,24 @@
         }
 
         function formatTime(d) {
-            if (!d || isNaN(d.getTime())) return '';
+            if (!(d instanceof Date) || isNaN(d.getTime())) return '';
             const h = String(d.getHours()).padStart(2, '0');
-            const min = String(d.getMinutes()).padStart(2, '0');
-            return `${h}:${min}`;
+            const m = String(d.getMinutes()).padStart(2, '0');
+            return `${h}:${m}`;
         }
 
         function formatDateHeader(d) {
-            if (!d || isNaN(d.getTime())) return '日時不明';
+            if (!(d instanceof Date) || isNaN(d.getTime())) return '';
             const days = ['日', '月', '火', '水', '木', '金', '土'];
             const y = d.getFullYear();
             const m = d.getMonth() + 1;
             const day = d.getDate();
-            const w = days[d.getDay()];
-            return `${y}年${m}月${day}日(${w})`;
+            const dayOfWeek = days[d.getDay()];
+            return `${y}年${m}月${day}日(${dayOfWeek})`;
         }
 
         function escapeHtml(str) {
-            if (!str) return '';
+            if (str === null || str === undefined) return '';
             return String(str)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')

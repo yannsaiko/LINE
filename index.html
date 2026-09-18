@@ -1702,7 +1702,7 @@
             try {
                 const prompt = await buildFullPrompt();
 
-                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -1737,53 +1737,65 @@
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;
             
-            if (typeof ts === 'string' && (ts.includes('-') || ts.includes('/')) && isNaN(Number(ts))) {
-                const parsedDate = new Date(ts.replace(/-/g, '/'));
-                if (!isNaN(parsedDate.getTime())) return parsedDate;
+            if (typeof ts === 'string' && (ts.includes('-') || ts.includes('/') || ts.includes('T'))) {
+                const d = new Date(ts);
+                if (!isNaN(d.getTime())) return d;
             }
 
-            let num = Number(ts);
-            if (isNaN(num) || num === 0) return null;
+            let n = Number(ts);
+            if (isNaN(n)) return null;
 
-            const appleEpochMs = 978307200000;
-
-            while (num > 2.5e12) {
-                num = Math.floor(num / 1000);
-            }
-
-            if (num >= 200000000000 && num <= 1200000000000) {
-                return new Date(appleEpochMs + num);
-            }
-            if (num >= 200000000 && num <= 1200000000) {
-                return new Date(appleEpochMs + (num * 1000));
-            }
-            if (num >= 1200000000000 && num <= 2500000000000) {
-                return new Date(num);
-            }
-            if (num >= 1200000000 && num <= 2500000000) {
-                return new Date(num * 1000);
+            // iOS Cocoa Core Data Absolute Time (seconds since 2001-01-01 00:00:00 UTC)
+            // 2001-01-01 UTC = 978307200 Epoch Seconds
+            if (n > 100000000000000) { 
+                n = Math.floor(n / 1000000000); // Nanoseconds to Seconds
+            } else if (n > 100000000000) { 
+                return new Date(n); // Milliseconds (Unix)
             }
 
-            const directDate = new Date(num);
-            if (!isNaN(directDate.getTime()) && directDate.getFullYear() >= 2008 && directDate.getFullYear() <= 2040) {
-                return directDate;
+            if (n < 978307200) {
+                // Cocoa Epoch -> Unix Epoch
+                return new Date((n + 978307200) * 1000);
             }
 
-            const appleFallback = new Date(appleEpochMs + num);
-            if (!isNaN(appleFallback.getTime()) && appleFallback.getFullYear() >= 2008 && appleFallback.getFullYear() <= 2040) {
-                return appleFallback;
-            }
+            // Unix Epoch in seconds
+            return new Date(n * 1000);
+        }
 
-            return null;
+        function formatDate(d) {
+            if (!d || isNaN(d.getTime())) return '';
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}/${m}/${day}`;
+        }
+
+        function formatTime(d) {
+            if (!d || isNaN(d.getTime())) return '';
+            const h = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
+            return `${h}:${min}`;
         }
 
         function formatDateHeader(d) {
+            if (!d || isNaN(d.getTime())) return '日時不明';
             const days = ['日', '月', '火', '水', '木', '金', '土'];
-            return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`;
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            const day = d.getDate();
+            const w = days[d.getDay()];
+            return `${y}年${m}月${day}日(${w})`;
         }
-        function formatDate(d) { return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`; }
-        function formatTime(d) { return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
-        function escapeHtml(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
     </script>
 </body>
 </html>

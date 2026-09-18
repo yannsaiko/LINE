@@ -2,717 +2,2139 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE トーク履歴 AI高度分析 & 閲覧ツール Pro</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Font Awesome アイコン -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- JSZip (ZIP解析) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <!-- sql.js (SQLite解析) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
-    <!-- Marked.js (Markdown描画) -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LINE トーク履歴マルチビューア & AI分析</title>
     <style>
-        .chat-bg { background-color: #7494c0; }
-        .chat-bubble-left { background-color: #ffffff; border-radius: 16px 16px 16px 2px; }
-        .chat-bubble-right { background-color: #85e249; border-radius: 16px 16px 2px 16px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         
-        /* メッセージハイライトアニメーション */
-        .highlight-msg {
-            animation: pulse-highlight 2.5s ease-in-out;
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif; 
+            height: 100vh; 
+            height: -webkit-fill-available; 
+            display: flex; 
+            flex-direction: column; 
+            background: #f5f5f5; 
+            color: #333; 
+            overflow: hidden; 
         }
-        @keyframes pulse-highlight {
-            0% { background-color: #fef08a; transform: scale(1.03); box-shadow: 0 0 15px rgba(234, 179, 8, 0.5); }
-            50% { background-color: #fde047; transform: scale(1.03); box-shadow: 0 0 15px rgba(234, 179, 8, 0.5); }
-            100% { background-color: transparent; transform: scale(1); box-shadow: none; }
-        }
+        html { height: -webkit-fill-available; }
         
-        /* ぼかし表現 */
-        .blur-mode .blur-target {
-            filter: blur(5px);
-            transition: filter 0.2s;
+        header { 
+            background: #06c755; 
+            color: white; 
+            padding: 10px 16px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+            flex-shrink: 0; 
+            z-index: 100; 
+            min-height: 50px; 
         }
-        .blur-mode .blur-target:hover {
-            filter: blur(0);
+        header h1 { font-size: 16px; font-weight: bold; letter-spacing: -0.3px; }
+        
+        .header-btns { display: flex; gap: 8px; }
+        .btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: background 0.15s; }
+        .btn:hover { background: rgba(255,255,255,0.3); }
+        .btn:active { background: rgba(255,255,255,0.4); }
+        
+        #drop-zone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 3px dashed #06c755; margin: 16px; border-radius: 12px; background: white; text-align: center; padding: 20px; overflow-y: auto; transition: background 0.2s, border-color 0.2s; }
+        #drop-zone.dragover { background: #e8f8ee; border-color: #00b348; }
+        .drop-icon { font-size: 42px; margin-bottom: 10px; color: #06c755; }
+        .file-inputs { margin-top: 18px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 520px; }
+        .file-inputs label { background: #06c755; color: white; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; transition: background 0.2s, transform 0.1s; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; flex: 1; min-width: 160px; box-shadow: 0 2px 6px rgba(6,199,85,0.2); }
+        .file-inputs label:hover { background: #05b34c; }
+        .file-inputs label:active { transform: scale(0.98); }
+        .file-inputs input { display: none; }
+        
+        .ios-warning-box { margin-top: 20px; font-size: 12px; color: #1e3a8a; line-height: 1.6; background: #eff6ff; padding: 14px 16px; border-radius: 10px; border: 1px solid #bfdbfe; max-width: 520px; text-align: left; }
+
+        #progress-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+        .progress-card { background: white; padding: 24px; border-radius: 16px; width: 88%; max-width: 380px; box-shadow: 0 12px 30px rgba(0,0,0,0.25); text-align: center; }
+        .progress-title { font-size: 15px; font-weight: bold; color: #1a202c; margin-bottom: 8px; }
+        .progress-sub { font-size: 12px; color: #718096; margin-bottom: 16px; word-break: break-all; min-height: 18px; }
+        .progress-track { width: 100%; background: #edf2f7; height: 14px; border-radius: 7px; overflow: hidden; position: relative; margin-bottom: 8px; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #06c755, #00b348); width: 0%; transition: width 0.15s ease-out; }
+        .progress-percent { font-size: 13px; font-weight: bold; color: #06c755; text-align: right; }
+
+        #app-container { flex: 1; display: none; height: calc(100vh - 50px); overflow: hidden; position: relative; }
+        
+        #sidebar { 
+            width: 360px; 
+            background: white; 
+            border-right: 1px solid #e2e8f0; 
+            display: flex; 
+            flex-direction: column; 
+            flex-shrink: 0; 
+            z-index: 2; 
+        }
+        .sidebar-section { padding: 12px; border-bottom: 1px solid #edf2f7; background: #f8fafc; display: flex; flex-direction: column; gap: 10px; }
+        .sidebar-label { font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 2px; display: block; }
+        select.styled-select, input.styled-input { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; background: white; appearance: none; -webkit-appearance: none; outline: none; transition: border-color 0.2s; }
+        select.styled-select:focus, input.styled-input:focus { border-color: #06c755; }
+        select.styled-select:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
+        
+        .add-files-bar { display: flex; gap: 6px; }
+        .btn-small { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; transition: background 0.15s; }
+        .btn-small:hover { background: #e2e8f0; }
+        .btn-small:active { background: #cbd5e1; }
+        .btn-small.active { background: #6366f1; color: white; border-color: #4f46e5; }
+        
+        .btn-danger { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .btn-danger:hover { background: #fca5a5; }
+
+        .btn-print { background: #06c755; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 4px; white-space: nowrap; transition: background 0.15s; }
+        .btn-print:hover { background: #05b34c; }
+
+        .btn-ai { 
+            background: linear-gradient(135deg, #6366f1, #8b5cf6); 
+            color: white; 
+            border: none; 
+            padding: 6px 14px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 12px; 
+            font-weight: bold; 
+            display: flex; 
+            align-items: center; 
+            gap: 4px; 
+            white-space: nowrap; 
+            box-shadow: 0 2px 4px rgba(99,102,241,0.3); 
+            transition: opacity 0.15s, transform 0.1s; 
+        }
+        .btn-ai:hover { opacity: 0.9; }
+        .btn-ai:active { transform: scale(0.98); }
+
+        #chat-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .chat-item { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.15s; }
+        .chat-item:hover { background: #f8fafc; }
+        .chat-item:active { background: #f1f5f9; }
+        .chat-item.active { background: #e8f8ee; border-left: 4px solid #06c755; }
+        .avatar { width: 42px; height: 42px; border-radius: 50%; background: #06c755; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .chat-meta { flex: 1; min-width: 0; }
+        .chat-title { font-weight: bold; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1e293b; }
+        .chat-file-tag { font-size: 10px; background: #e2e8f0; color: #475569; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 3px; font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .chat-sub { font-size: 11px; color: #64748b; display: flex; justify-content: space-between; margin-top: 4px; }
+        
+        #main-content { 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            background: #abc1ee; 
+            position: relative; 
+            z-index: 1; 
+        }
+        #chat-header { background: #ffffff; padding: 8px 14px; border-bottom: 1px solid #cbd5e1; display: none; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.05); gap: 8px; flex-shrink: 0; z-index: 10; }
+        
+        .btn-back { display: none; background: transparent; border: none; font-size: 18px; font-weight: bold; color: #06c755; cursor: pointer; padding: 4px 8px 4px 0; align-items: center; }
+        
+        #chat-header-info-wrap { flex: 1; min-width: 0; }
+        #chat-header-title { font-weight: bold; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #0f172a; }
+        #chat-header-info { font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .chat-header-actions { display: flex; align-items: center; gap: 6px; position: relative; flex-wrap: wrap; }
+        
+        .msg-search-box { display: flex; align-items: center; background: #f1f5f9; border-radius: 6px; border: 1px solid #cbd5e1; padding: 2px 6px; position: relative; }
+        .msg-search-box input { border: none; background: transparent; outline: none; font-size: 12px; width: 100px; padding: 4px; color: #1e293b; }
+        .search-count { font-size: 10px; color: #64748b; margin: 0 4px; white-space: nowrap; }
+
+        .search-results-dropdown { display: none; position: absolute; top: 100%; right: 0; width: 290px; max-height: 250px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); overflow-y: auto; z-index: 50; margin-top: 4px; }
+        .search-result-item { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; font-size: 12px; text-align: left; transition: background 0.15s; }
+        .search-result-item:hover { background: #e8f8ee; }
+        .search-result-sender { font-weight: bold; color: #06c755; font-size: 11px; margin-bottom: 2px; }
+        .search-result-text { color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .search-result-time { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+
+        #chat-view { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; }
+        #empty-state { margin: auto; color: #475569; text-align: center; font-size: 14px; font-weight: bold; background: rgba(255,255,255,0.9); padding: 24px; border-radius: 12px; max-width: 80%; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        
+        #messages-container { display: flex; flex-direction: column; gap: 12px; }
+        .date-divider { text-align: center; margin: 10px 0; font-size: 11px; color: #334155; background: rgba(255,255,255,0.85); padding: 4px 14px; border-radius: 12px; align-self: center; font-weight: bold; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        
+        .msg-row { display: flex; gap: 8px; max-width: 88%; transition: background-color 0.4s ease; padding: 4px 6px; border-radius: 8px; align-items: flex-start; }
+        .msg-row.other { align-self: flex-start; }
+        .msg-row.me { align-self: flex-end; flex-direction: row-reverse; }
+
+        .msg-select-check { width: 18px; height: 18px; margin-top: 8px; cursor: pointer; flex-shrink: 0; accent-color: #06c755; }
+
+        .msg-avatar { width: 34px; height: 34px; border-radius: 50%; background: #64748b; color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; flex-shrink: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .msg-content { display: flex; flex-direction: column; min-width: 0; width: 100%; }
+        
+        .msg-header-line { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 3px; }
+        .msg-sender-name { font-size: 11px; color: #334155; font-weight: 600; }
+        .msg-row.me .msg-header-line { flex-direction: row-reverse; }
+        
+        .msg-tools { display: flex; gap: 4px; opacity: 0.25; transition: opacity 0.2s; }
+        .msg-row:hover .msg-tools, .msg-tools:active { opacity: 1; }
+        .btn-msg-tool { background: rgba(0,0,0,0.06); border: none; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer; color: #334155; font-weight: 500; transition: background 0.15s; }
+        .btn-msg-tool:hover { background: rgba(0,0,0,0.12); }
+
+        .bubble { 
+            background: white; 
+            padding: 8px 13px; 
+            border-radius: 14px; 
+            font-size: 14px; 
+            line-height: 1.45; 
+            word-break: break-word; 
+            white-space: pre-wrap; 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1); 
+            color: #0f172a; 
+        }
+        .msg-row.me .bubble { 
+            background: #85e249; 
+            color: #000; 
         }
 
-        /* スクロールバー調整 */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); }
-        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
+        .msg-datetime-sub { font-size: 10px; color: rgba(0,0,0,0.6); margin-top: 4px; font-weight: 500; text-align: left; display: block !important; }
+        .msg-row.me .msg-datetime-sub { text-align: right; }
+
+        .bubble.is-mosaic { 
+            filter: blur(6px) !important; 
+            -webkit-filter: blur(6px) !important; 
+            user-select: none; 
+            opacity: 0.7; 
+        }
+        .msg-row.is-hidden-msg { display: none !important; }
+
+        #status-bar { background: #1e293b; color: #f8fafc; font-size: 11px; padding: 6px 14px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+
+        #official-text-print-view, #ai-print-only-container { display: none; }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+        .modal-box { background: white; padding: 22px; border-radius: 14px; width: 90%; max-width: 620px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; }
+        .modal-title { font-size: 16px; font-weight: bold; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; color: #0f172a; }
+        .option-group { margin-bottom: 16px; }
+        .option-label { font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 6px; display: block; }
+        .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer; user-select: none; color: #1e293b; }
+        .modal-btns { display: flex; gap: 10px; margin-top: 22px; justify-content: flex-end; flex-wrap: wrap; }
+        .btn-cancel { background: #e2e8f0; color: #475569; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; transition: background 0.15s; }
+        .btn-cancel:hover { background: #cbd5e1; }
+        .btn-exec-print { background: #06c755; color: white; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; transition: background 0.15s; }
+        .btn-exec-print:hover { background: #05b34c; }
+
+        .ai-result-box { 
+            background: #f8fafc; 
+            border: 1px solid #e2e8f0; 
+            border-radius: 8px; 
+            padding: 14px; 
+            font-size: 13px; 
+            line-height: 1.6; 
+            color: #1e293b; 
+            white-space: pre-wrap; 
+            word-break: break-word; 
+            max-height: 280px; 
+            overflow-y: auto; 
+            margin-top: 8px; 
+        }
+        .ai-model-hint { font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.4; }
+        .ai-model-hint a { color: #6366f1; text-decoration: none; font-weight: bold; }
+        
+        .ai-search-tools { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+        #ai-room-checklist {
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 8px 12px;
+            background: #f8fafc;
+        }
+        .ai-room-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            padding: 6px 0;
+            border-bottom: 1px solid #edf2f7;
+        }
+        .ai-room-item:last-child { border-bottom: none; }
+
+        /* 履歴カード用スタイル */
+        .history-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+        }
+        .history-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+        }
+        .history-card-title { font-weight: bold; font-size: 13px; color: #1e293b; }
+        .history-card-date { font-size: 11px; color: #94a3b8; }
+        .history-card-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+
+        @media print {
+            @page { margin: 12mm; }
+            
+            header, #sidebar, .chat-header-actions, .btn-back, #status-bar, 
+            .modal-overlay, #progress-overlay, #drop-zone, .msg-tools, 
+            .search-results-dropdown, .msg-select-check, .btn-ai, 
+            #ai-modal {
+                display: none !important;
+            }
+
+            body, #app-container, #main-content, #chat-view {
+                position: static !important;
+                height: auto !important;
+                overflow: visible !important;
+                background: white !important;
+            }
+            #app-container { display: block !important; }
+            #main-content { display: block !important; width: 100% !important; }
+            #chat-header {
+                display: flex !important;
+                border-bottom: 2px solid #ccc !important;
+                padding-bottom: 8px !important;
+                margin-bottom: 12px !important;
+            }
+            .bubble {
+                box-shadow: none !important;
+                border: 1px solid #ddd !important;
+            }
+
+            /* AI印刷時の専用レイアウト制御 */
+            body.print-hide-chat #messages-container,
+            body.print-hide-chat #chat-header,
+            body.print-hide-chat #official-text-print-view {
+                display: none !important;
+            }
+
+            #ai-print-only-container {
+                display: none;
+            }
+            body.print-show-ai #ai-print-only-container {
+                display: block !important;
+                font-family: sans-serif;
+                font-size: 13px;
+                line-height: 1.6;
+                color: #000;
+                margin-bottom: 20px;
+                padding: 14px;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                background: #f8fafc;
+            }
+
+            body.print-hide-header #chat-header { display: none !important; }
+            body.print-hide-time .msg-datetime-sub { display: none !important; }
+            body.print-hide-sender .msg-sender-name, body.print-hide-sender .msg-avatar { display: none !important; }
+            body.print-hide-masked .is-mosaic { display: none !important; }
+            body.print-hide-masked .is-hidden-msg { display: none !important; }
+
+            body.print-selected-only .msg-row:not(.is-selected-for-print) {
+                display: none !important;
+            }
+            body.print-selected-only .date-divider:not(.has-selected-msg) {
+                display: none !important;
+            }
+
+            body.print-keep-bg #main-content {
+                background: #abc1ee !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            body.print-keep-bg .msg-row.me .bubble {
+                background: #85e249 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            body.print-text-mode #messages-container { display: none !important; }
+            body.print-text-mode #official-text-print-view {
+                display: block !important;
+                font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace, "BIZ UDゴシック", sans-serif !important;
+                font-size: 12px !important;
+                line-height: 1.5 !important;
+                color: #000 !important;
+                white-space: pre-wrap !important;
+                word-break: break-all !important;
+            }
+        }
+
+        @media (max-width: 768px) {
+            #sidebar { width: 100%; height: 100%; position: absolute; left: 0; top: 0; z-index: 5; }
+            #main-content { width: 100%; height: 100%; position: absolute; left: 0; top: 0; z-index: 10; display: none; }
+            body.show-chat #sidebar { display: none !important; }
+            body.show-chat #main-content { display: flex !important; }
+            .btn-back { display: inline-flex; }
+        }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
-<body class="bg-slate-100 text-slate-800 h-screen flex flex-col font-sans overflow-hidden">
-
-    <!-- ヘッダー -->
-    <header class="bg-slate-800 text-white px-6 py-3 flex justify-between items-center shadow-md shrink-0">
-        <div class="flex items-center space-x-3">
-            <i class="fa-solid fa-comments text-emerald-400 text-2xl"></i>
-            <h1 class="font-bold text-lg tracking-wide">LINEトーク履歴 AI高度分析 Pro</h1>
-        </div>
-        <div class="flex items-center space-x-4">
-            <!-- API状態バッジ -->
-            <div id="apiStatusBadge" class="flex items-center text-xs px-3 py-1 rounded-full bg-slate-700 text-slate-300 border border-slate-600">
-                <span class="w-2 h-2 rounded-full bg-amber-400 mr-2" id="statusDot"></span>
-                <span id="statusText">API未認証</span>
-            </div>
-            <!-- API設定ボタン -->
-            <button onclick="toggleApiModal(true)" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-3 py-1.5 rounded-lg transition flex items-center shadow">
-                <i class="fa-solid fa-key mr-2"></i>API設定
-            </button>
+<body>
+    <header>
+        <h1>LINE トーク履歴マルチビューア & AI分析</h1>
+        <div class="header-btns">
+            <button id="btn-reset" class="btn" style="display:none;" onclick="location.reload()">リセット</button>
         </div>
     </header>
 
-    <!-- メイン領域 -->
-    <div class="flex-1 flex overflow-hidden">
-
-        <!-- 左側：トーク一覧＆ファイル操作 -->
-        <div class="w-1/2 flex flex-col border-r border-slate-300 bg-white">
-            
-            <!-- 上部ツールバー -->
-            <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-2 items-center justify-between shrink-0">
-                <!-- ファイル選択 -->
-                <div class="flex items-center space-x-2">
-                    <label class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-2 rounded cursor-pointer transition flex items-center shadow">
-                        <i class="fa-solid fa-file-import mr-1.5"></i>ファイルを開く (.txt / .sqlite / .zip)
-                        <input type="file" id="fileInput" accept=".txt,.sqlite,.zip,.db" class="hidden" onchange="handleFileSelect(event)">
-                    </label>
-                    <span id="loadedFileName" class="text-xs text-slate-500 max-w-[150px] truncate">ファイル未選択</span>
-                </div>
-
-                <!-- 表示コントロール -->
-                <div class="flex items-center space-x-2">
-                    <input type="text" id="searchInput" placeholder="検索..." oninput="filterMessages()" class="text-xs border rounded px-2 py-1 w-32 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                    <button onclick="toggleBlur()" id="blurBtn" class="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-1 rounded transition">
-                        <i class="fa-solid fa-eye-slash mr-1"></i>ぼかし
-                    </button>
-                </div>
-            </div>
-
-            <!-- ドロップゾーン (未読込時) -->
-            <div id="dropZone" class="flex-1 flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-300 m-4 rounded-xl bg-slate-50 text-slate-400 hover:border-indigo-400 transition cursor-pointer" onclick="document.getElementById('fileInput').click()" ondragover="handleDragOver(event)" onleave="handleDragLeave(event)" ondrop="handleDrop(event)">
-                <i class="fa-solid fa-cloud-arrow-up text-5xl mb-3 text-slate-300"></i>
-                <p class="font-medium text-sm text-slate-600">ここにファイルをドラッグ＆ドロップ</p>
-                <p class="text-xs text-slate-400 mt-1">LINEのテキストエクスポート (.txt)、iOS/Android SQLite (.sqlite), ZIPアーカイブに対応</p>
-            </div>
-
-            <!-- タイムライン表示領域 -->
-            <div id="chatTimeline" class="flex-1 chat-bg overflow-y-auto p-4 space-y-3 hidden">
-                <!-- メッセージがここに動的に生成されます -->
-            </div>
-
-            <div class="p-2 bg-slate-100 border-t border-slate-200 text-xs text-slate-500 flex justify-between shrink-0">
-                <span id="msgCount">メッセージ数: 0</span>
-                <span>IDを指定してAI分析できます</span>
-            </div>
+    <div id="drop-zone">
+        <div class="drop-icon">💬</div>
+        <h2 style="font-size:18px; font-weight:bold; color:#1e293b;">ファイルまたはフォルダーを選択 / ドロップ</h2>
+        <p style="margin-top:8px; color:#64748b; font-size:13px; max-width:480px;">`Line.sqlite` 、LINEの `.txt` バックアップファイル、`.zip` 圧縮ファイル、または抽出フォルダー全体を一度に読み込めます</p>
+        <div class="file-inputs">
+            <label>📁 ファイル/ZIPを選択<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.sqlite3,.zip,.txt"></label>
+            <label class="folder-label">📂 フォルダーを選択<input type="file" class="folder-input-elem" webkitdirectory directory multiple></label>
         </div>
-
-        <!-- 右側：AI分析パネル -->
-        <div class="w-1/2 flex flex-col bg-slate-50">
-            
-            <!-- 分析ヘッダー -->
-            <div class="p-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0">
-                <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-wand-magic-sparkles text-indigo-600"></i>
-                    <h2 class="font-bold text-slate-700 text-sm">AI アナリティクス & 要約</h2>
-                </div>
-                <div class="text-xs text-slate-500" id="currentModelDisplay">使用モデル: 未設定</div>
-            </div>
-
-            <!-- 分析プロンプト操作エリア -->
-            <div class="p-4 bg-white border-b border-slate-200 space-y-3 shrink-0">
-                <div class="flex gap-2">
-                    <button onclick="setPrompt('要約')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded border border-slate-300 transition">📝 トーク全体の要約</button>
-                    <button onclick="setPrompt('感情')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded border border-slate-300 transition">❤️ 感情・親和度分析</button>
-                    <button onclick="setPrompt('タスク')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded border border-slate-300 transition">📌 約束・タスク抽出</button>
-                    <button onclick="setPrompt('タイムライン')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded border border-slate-300 transition">📅 時系列ハイライト</button>
-                </div>
-                <div class="flex gap-2">
-                    <textarea id="aiPromptInput" rows="2" placeholder="分析指示を入力...（例: 2人の関係性の変化を時系列で解説して）" class="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"></textarea>
-                    <button onclick="runAiAnalysis()" id="analyzeBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs px-4 py-2 rounded-lg transition flex items-center justify-center shrink-0 shadow">
-                        <i class="fa-solid fa-paper-plane mr-1.5"></i>実行
-                    </button>
-                </div>
-            </div>
-
-            <!-- AI回答表示領域 -->
-            <div class="flex-1 overflow-y-auto p-4" id="aiResultContainer">
-                <div id="aiPlaceholder" class="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
-                    <i class="fa-solid fa-robot text-4xl text-slate-300"></i>
-                    <p class="text-xs">分析プロンプトを入力して「実行」を押してください</p>
-                    <p class="text-[11px] text-slate-400">※回答内の [msg:ID] ボタンをクリックすると該当トーク箇所へジャンプできます</p>
-                </div>
-                <div id="aiResponse" class="prose prose-sm max-w-none text-slate-800 hidden"></div>
-            </div>
-
+        <div class="ios-warning-box">
+            💡 <b>名前復元ヒント:</b><br>
+            `Line.sqlite` だけでなく、抽出フォルダー全体（または複数のDBファイル）をまとめて選択・ドロップすると、内部の連絡先辞書（`ZUSER` / `contacts`）と自動照合され、トーク部屋や相手の名前が正確に復元されます。
         </div>
-
     </div>
 
-    <!-- API設定モーダル -->
-    <div id="apiModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <div class="flex justify-between items-center border-b pb-3">
-                <h3 class="font-bold text-slate-800 flex items-center">
-                    <i class="fa-solid fa-gear text-indigo-600 mr-2"></i>API設定 & 認証
-                </h3>
-                <button onclick="toggleApiModal(false)" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+    <div id="progress-overlay">
+        <div class="progress-card">
+            <div class="progress-title" id="progress-title">データを読み込んでいます...</div>
+            <div class="progress-sub" id="progress-sub">準備中</div>
+            <div class="progress-track">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <div class="progress-percent" id="progress-percent">0%</div>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <div id="sidebar">
+            <div class="sidebar-section">
+                <div class="add-files-bar">
+                    <label class="btn-small">＋ 追加ファイル/ZIP<input type="file" class="file-input-elem" multiple accept=".sqlite,.db,.sqlite3,.zip,.txt" style="display:none;"></label>
+                    <label class="btn-small">＋ 追加フォルダー<input type="file" class="folder-input-elem" webkitdirectory directory multiple style="display:none;"></label>
+                </div>
+                <div>
+                    <span class="sidebar-label">📂 ファイル選択</span>
+                    <select id="file-filter" class="styled-select" onchange="applyFilters()">
+                        <option value="ALL">すべてのファイル/フォルダー</option>
+                    </select>
+                </div>
+                <div>
+                    <span class="sidebar-label">👤 トーク相手/検索</span>
+                    <input type="text" id="chat-search" class="styled-input" placeholder="名前やIDで検索..." oninput="applyFilters()">
+                </div>
+            </div>
+            <div id="chat-list"></div>
+        </div>
+        <div id="main-content">
+            <div id="chat-header">
+                <button class="btn-back" onclick="backToList()">❮</button>
+                <div id="chat-header-info-wrap">
+                    <div id="chat-header-title">トーク名</div>
+                    <div id="chat-header-info">情報</div>
+                </div>
+                <div class="chat-header-actions">
+                    <button class="btn-ai" onclick="openAiModal()">🤖 AIで分析</button>
+                    
+                    <button class="btn-small" onclick="toggleSelectAll(true)">☑ 全選択</button>
+                    <button class="btn-small" onclick="toggleSelectAll(false)">☐ 全解除</button>
+                    <button class="btn-small" onclick="resetAllMasks()">🔄 ぼかし解除</button>
+                    
+                    <div class="msg-search-box">
+                        <input type="text" id="msg-search" placeholder="💬 検索..." oninput="onSearchInput(this.value)">
+                        <span id="search-count" class="search-count"></span>
+                        <div id="search-dropdown" class="search-results-dropdown"></div>
+                    </div>
+
+                    <button class="btn-print" onclick="openPrintModal()">🖨️ 印刷</button>
+                </div>
+            </div>
+            <div id="chat-view">
+                <div id="empty-state">左のリストから対象のトークを選択してください</div>
+                <div id="ai-print-only-container"></div>
+                <div id="messages-container"></div>
+                <div id="official-text-print-view"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 印刷設定モーダル -->
+    <div id="print-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">
+                <span>🖨️ 印刷設定</span>
+                <span style="cursor:pointer;" onclick="closePrintModal()">✕</span>
+            </div>
+            <div class="option-group">
+                <span class="option-label">印刷対象のコンテンツ</span>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="print-opt-include-chat" checked> 💬 トーク内容（メッセージ）を印刷する
+                </label>
+                <label class="checkbox-label" id="print-opt-include-ai-wrap" style="display:none;">
+                    <input type="checkbox" id="print-opt-include-ai" checked> 🤖 直近のAI分析結果も印刷に含める
+                </label>
+            </div>
+            <div class="option-group" id="print-scope-group">
+                <span class="option-label">印刷対象メッセージの範囲</span>
+                <label class="checkbox-label">
+                    <input type="radio" name="print-scope" id="print-opt-scope-all" checked onchange="updatePrintModalState()"> すべてのメッセージを印刷
+                </label>
+                <label class="checkbox-label">
+                    <input type="radio" name="print-scope" id="print-opt-scope-selected" onchange="updatePrintModalState()"> <b style="color:#06c755;">☑ 選択したメッセージのみ印刷</b> (<span id="modal-selected-count">0</span>件選択中)
+                </label>
+            </div>
+            <div class="option-group">
+                <span class="option-label">印刷レイアウト形式</span>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="print-opt-text-mode"> 📄 公式LINEテキストバックアップ形式（TAB区切り）で印刷
+                </label>
+            </div>
+            <div class="option-group">
+                <span class="option-label">表示項目設定</span>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="print-opt-header" checked> トーク名・ヘッダー情報を印刷
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="print-opt-time" checked> メッセージ日時（タイムスタンプ）を表示
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="print-opt-sender" checked> 送信者名を表示
+                </label>
+            </div>
+            <div class="option-group">
+                <span class="option-label">非表示・ぼかしの扱い</span>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="print-opt-hide-masked" checked> ぼかし/非表示メッセージを印刷から完全除外
+                </label>
+            </div>
+            <div class="option-group">
+                <span class="option-label">スタイル（吹き出し表示時）</span>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="print-opt-bg" checked> LINE風の背景色・吹き出し色を印刷に反映
+                </label>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closePrintModal()">キャンセル</button>
+                <button class="btn-exec-print" onclick="executePrint()">印刷する</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AIモーダル -->
+    <div id="ai-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">
+                <span>🤖 AI トーク分析 & 履歴</span>
+                <span style="cursor:pointer;" onclick="closeAiModal()">✕</span>
             </div>
 
-            <div class="space-y-3 text-xs">
-                <div>
-                    <label class="block font-medium text-slate-700 mb-1">APIプロバイダー</label>
-                    <select id="apiProvider" onchange="handleProviderChange()" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <option value="gemini">Google Gemini API</option>
-                        <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
-                        <option value="claude">Anthropic Claude</option>
-                        <option value="custom">OpenAI 互換カスタム API</option>
+            <!-- タブ切り替えボタン -->
+            <div style="display:flex; gap:8px; margin-bottom:14px; border-bottom:2px solid #edf2f7; padding-bottom:8px;">
+                <button id="ai-tab-btn-run" class="btn-small active" onclick="switchAiTab('run')">✨ AI分析実行</button>
+                <button id="ai-tab-btn-history" class="btn-small" onclick="switchAiTab('history')">📜 分析履歴 (<span id="ai-history-count">0</span>)</button>
+            </div>
+
+            <!-- AI分析実行タブ -->
+            <div id="ai-tab-run-content">
+                <div class="option-group">
+                    <span class="option-label">🔑 Google Gemini API キー</span>
+                    <div style="display:flex; gap:6px;">
+                        <input type="password" id="ai-api-key" class="styled-input" placeholder="AIStudioで取得したAPIキーを入力..." oninput="saveApiKey(this.value)" onchange="saveApiKey(this.value)">
+                        <button class="btn-small" onclick="checkApiKeyAuth()" style="white-space:nowrap; background:#e0e7ff; color:#3730a3; border-color:#c7d2fe; font-weight:bold;">🔌 認証確認</button>
+                    </div>
+                    <div id="ai-auth-status" style="font-size:11px; margin-top:5px; font-weight:bold; min-height:16px;"></div>
+                    <div class="ai-model-hint">
+                        ※一度入力すれば次回以降も自動保存されます。<br>
+                        キーをお持ちでない方は <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio (無料)</a> で取得するか、「プロンプトをコピー」をご利用ください。
+                    </div>
+                </div>
+
+                <div class="option-group">
+                    <span class="option-label">🤖 使用するAIモデル</span>
+                    <select id="ai-model-select" class="styled-select" disabled>
+                        <option value="">🔒 APIキー認証確認後に選択可能になります</option>
+                    </select>
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">💬 分析対象のトークルーム</span>
+                    <label class="checkbox-label">
+                        <input type="radio" name="ai-target-scope" value="active" checked onchange="toggleAiRoomSelectVisibility()"> 現在開いているトークルームのみ
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="radio" name="ai-target-scope" value="multiple" onchange="toggleAiRoomSelectVisibility()"> 複数のトークルームを検索して選択
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="radio" name="ai-target-scope" value="all" onchange="toggleAiRoomSelectVisibility()"> すべてのトークルーム一括
+                    </label>
+
+                    <div id="ai-room-checklist-wrap" style="display:none; margin-top:8px;">
+                        <div class="ai-search-tools">
+                            <input type="text" id="ai-room-search-input" class="styled-input" placeholder="🔍 トーク部屋を検索..." oninput="filterAiRoomChecklist(this.value)">
+                            <button class="btn-small" onclick="toggleFilteredAiRooms(true)">全選択</button>
+                            <button class="btn-small" onclick="toggleFilteredAiRooms(false)">全解除</button>
+                        </div>
+                        <div id="ai-room-checklist"></div>
+                    </div>
+                </div>
+
+                <div class="option-group">
+                    <span class="option-label">📊 分析タイプ</span>
+                    <select id="ai-prompt-type" class="styled-select" onchange="onAiPromptTypeChange(this.value)">
+                        <option value="summary">📝 全体の要約・重要トピック抽出</option>
+                        <option value="relationship">❤️ 感情・関係性・親密度分析</option>
+                        <option value="tasks">📌 決定事項・約束・タスク箇条書き抽出</option>
+                        <option value="custom">💬 自由質問（制限なしでどんな質問にも回答）</option>
                     </select>
                 </div>
 
-                <div>
-                    <label class="block font-medium text-slate-700 mb-1">API キー</label>
-                    <input type="password" id="apiKeyInput" placeholder="AI-XXXXX..." class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                <div class="option-group" id="ai-custom-question-group" style="display:none;">
+                    <span class="option-label">❓ AIへの質問・指示</span>
+                    <input type="text" id="ai-custom-question" class="styled-input" placeholder="例: 主な会話の話題、特定の単語の検索、二人の関係の変化など自由に入力">
                 </div>
 
-                <div id="baseUrlContainer" class="hidden">
-                    <label class="block font-medium text-slate-700 mb-1">ベース URL</label>
-                    <input type="text" id="apiBaseUrl" placeholder="https://api.openai.com/v1" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                <div class="option-group">
+                    <span class="option-label">📏 各トークの取得件数範囲</span>
+                    <select id="ai-range-type" class="styled-select">
+                        <option value="recent100">各トーク直近 100 件のメッセージ</option>
+                        <option value="recent300">各トーク直近 300 件のメッセージ</option>
+                        <option value="all">各トークすべてのメッセージ (完全フルデータ)</option>
+                    </select>
                 </div>
 
-                <div>
-                    <label class="block font-medium text-slate-700 mb-1">モデル名</label>
-                    <input type="text" id="apiModelInput" placeholder="gemini-1.5-flash" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                <div class="modal-btns">
+                    <button class="btn-cancel" onclick="closeAiModal()">閉じる</button>
+                    <button class="btn-small" onclick="copyAiPromptToClipboard()">📋 プロンプトをコピー</button>
+                    <button class="btn-ai" onclick="runAiAnalysis()">✨ AIで分析実行</button>
                 </div>
 
-                <p class="text-[11px] text-slate-400 bg-slate-50 p-2 rounded border">
-                    <i class="fa-solid fa-shield-halved mr-1"></i>設定されたAPIキーはブラウザのLocalStorageに保存され、サーバーへ直接送信されるため再入力は不要です。
-                </p>
+                <div id="ai-result-container" style="display:none; margin-top:15px; border-top:1px dashed #cbd5e1; padding-top:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="option-label" style="margin:0;">💡 AI分析結果</span>
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn-small" onclick="downloadCurrentAiResult()">📄 TXT保存</button>
+                            <button class="btn-small" onclick="openPrintModalWithAi(latestAiResultText)">🖨️ 印刷</button>
+                        </div>
+                    </div>
+                    <div id="ai-result-box" class="ai-result-box">分析準備中...</div>
+                </div>
             </div>
 
-            <div class="flex justify-end space-x-2 pt-2 border-t">
-                <button onclick="clearApiConfig()" class="text-xs bg-slate-100 hover:bg-slate-200 text-rose-600 px-3 py-2 rounded-lg transition">消去</button>
-                <button onclick="saveAndTestApi()" id="saveApiBtn" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg transition flex items-center">
-                    <i class="fa-solid fa-floppy-disk mr-1.5"></i>保存 & 認証テスト
-                </button>
+            <!-- 分析履歴タブ -->
+            <div id="ai-tab-history-content" style="display:none;">
+                <div id="ai-history-list" style="max-height:480px; overflow-y:auto;"></div>
             </div>
         </div>
     </div>
 
-    <!-- JavaScript ロジック -->
+    <div id="status-bar">初期化中...</div>
+
     <script>
-        // グローバル状態
-        let messages = []; // { id, sender, text, date, time, isMe }
-        let apiConfig = {
-            provider: 'gemini',
-            apiKey: '',
-            baseUrl: '',
-            model: 'gemini-1.5-flash',
-            isValidated: false
-        };
-        let isBlurMode = false;
+        let SQL = null;
+        let fileMap = {};
+        let allChatRooms = [];
+        let activeChat = null;
+        let rawMessages = [];
+        let fileCounter = 0;
 
-        const STORAGE_KEY = 'line_analyzer_api_config_v1';
+        let globalUserMap = {};
+        let globalChatMap = {};
 
-        // 初期化処理
-        window.addEventListener('DOMContentLoaded', () => {
-            loadApiConfig();
-            initSqlJs();
+        let latestAiResultText = '';
+        let aiHistory = [];
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                updateStatus('SQL.js Engine 初期化中...');
+                if (typeof initSqlJs === 'undefined') throw new Error("sql.js ライブラリが読み込まれていません。");
+                SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
+                updateStatus('準備完了: ファイルまたはフォルダーを選択してください');
+                
+                const savedKey = localStorage.getItem('gemini_api_key');
+                if (savedKey) {
+                    document.getElementById('ai-api-key').value = savedKey;
+                }
+
+                loadAiHistoryFromStorage();
+
+            } catch (err) {
+                updateStatus('初期化完了（.txt解析のみ対応可能）');
+            }
         });
 
-        // -------------------------------------------------------------
-        // 1. API設定 & LocalStorage 認証管理
-        // -------------------------------------------------------------
-        function loadApiConfig() {
-            const saved = localStorage.getItem(STORAGE_KEY);
-            if (saved) {
-                try {
-                    apiConfig = JSON.parse(saved);
-                    document.getElementById('apiProvider').value = apiConfig.provider || 'gemini';
-                    document.getElementById('apiKeyInput').value = apiConfig.apiKey || '';
-                    document.getElementById('apiBaseUrl').value = apiConfig.baseUrl || '';
-                    document.getElementById('apiModelInput').value = apiConfig.model || 'gemini-1.5-flash';
-                    
-                    updateApiStatusUI(apiConfig.isValidated, apiConfig.isValidated ? '認証済み (保存済)' : '未確認');
-                } catch (e) {
-                    console.error('API設定読み込みエラー', e);
-                }
+        function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
+        function yieldToUI(ms = 30) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+        function setProgressBar(show, title = '読み込み中...', percent = 0, subText = '') {
+            const overlay = document.getElementById('progress-overlay');
+            if (show) {
+                overlay.style.display = 'flex';
+                document.getElementById('progress-title').innerText = title;
+                document.getElementById('progress-sub').innerText = subText;
+                document.getElementById('progress-fill').style.width = Math.min(100, Math.max(0, percent)) + '%';
+                document.getElementById('progress-percent').innerText = Math.round(percent) + '%';
             } else {
-                handleProviderChange();
+                overlay.style.display = 'none';
             }
         }
 
-        function handleProviderChange() {
-            const provider = document.getElementById('apiProvider').value;
-            const baseUrlContainer = document.getElementById('baseUrlContainer');
-            const modelInput = document.getElementById('apiModelInput');
+        function normalizePath(relPath) {
+            if (!relPath) return '';
+            const parts = relPath.split('/').filter(Boolean);
+            return parts.length > 1 ? parts.slice(1).join('/') : parts[0] || '';
+        }
 
-            if (provider === 'gemini') {
-                modelInput.value = 'gemini-1.5-flash';
-                baseUrlContainer.classList.add('hidden');
-            } else if (provider === 'openai') {
-                modelInput.value = 'gpt-4o-mini';
-                baseUrlContainer.classList.add('hidden');
-            } else if (provider === 'claude') {
-                modelInput.value = 'claude-3-haiku-20240307';
-                baseUrlContainer.classList.add('hidden');
-            } else if (provider === 'custom') {
-                modelInput.value = 'gpt-3.5-turbo';
-                baseUrlContainer.classList.remove('hidden');
+        const dropZone = document.getElementById('drop-zone');
+        window.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        window.addEventListener('dragleave', e => { if (e.clientX === 0 && e.clientY === 0) dropZone.classList.remove('dragover'); });
+        
+        window.addEventListener('drop', async e => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            
+            setProgressBar(true, 'フォルダーの解析中...', 5, 'アイテムを取得しています');
+            const fileItems = await scanFilesFromDataTransfer(e.dataTransfer);
+            if (fileItems.length > 0) {
+                await processUnifiedFileList(fileItems);
+            } else {
+                setProgressBar(false);
+                alert('解析対象のファイルが見つかりませんでした。');
             }
+        });
+
+        async function scanFilesFromDataTransfer(dataTransfer) {
+            const items = dataTransfer.items;
+            if (!items) {
+                return Array.from(dataTransfer.files || []).map(f => ({
+                    file: f,
+                    path: normalizePath(f.webkitRelativePath || f.name)
+                }));
+            }
+
+            const scanPromises = [];
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.kind === 'file') {
+                    const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+                    if (entry) {
+                        scanPromises.push(scanFileSystemEntry(entry, ''));
+                    } else {
+                        const file = item.getAsFile();
+                        if (file) {
+                            scanPromises.push(Promise.resolve([{ file, path: normalizePath(file.name) }]));
+                        }
+                    }
+                }
+            }
+
+            const results = await Promise.all(scanPromises);
+            return results.flat();
         }
 
-        function toggleApiModal(show) {
-            document.getElementById('apiModal').classList.toggle('hidden', !show);
+        function scanFileSystemEntry(entry, currentPath = '') {
+            return new Promise((resolve) => {
+                if (entry.isFile) {
+                    entry.file(f => {
+                        const fullPath = currentPath ? `${currentPath}/${f.name}` : entry.name;
+                        resolve([{ file: f, path: normalizePath(fullPath) }]);
+                    }, () => resolve([]));
+                } else if (entry.isDirectory) {
+                    const dirReader = entry.createReader();
+                    let entries = [];
+                    const readBatch = () => {
+                        dirReader.readEntries(async (batch) => {
+                            if (batch.length === 0) {
+                                const nextPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+                                const promises = entries.map(child => scanFileSystemEntry(child, nextPath));
+                                const subResults = await Promise.all(promises);
+                                resolve(subResults.flat());
+                            } else {
+                                entries = entries.concat(batch);
+                                readBatch();
+                            }
+                        }, () => resolve([]));
+                    };
+                    readBatch();
+                } else {
+                    resolve([]);
+                }
+            });
         }
 
-        async function saveAndTestApi() {
-            const saveBtn = document.getElementById('saveApiBtn');
-            saveBtn.disabled = true;
-            saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>検証中...`;
+        document.querySelectorAll('.file-input-elem').forEach(el => el.addEventListener('change', e => {
+            const items = Array.from(e.target.files).map(f => ({
+                file: f,
+                path: normalizePath(f.webkitRelativePath || f.name)
+            }));
+            processUnifiedFileList(items);
+        }));
 
-            apiConfig.provider = document.getElementById('apiProvider').value;
-            apiConfig.apiKey = document.getElementById('apiKeyInput').value.trim();
-            apiConfig.baseUrl = document.getElementById('apiBaseUrl').value.trim();
-            apiConfig.model = document.getElementById('apiModelInput').value.trim();
+        document.querySelectorAll('.folder-input-elem').forEach(el => el.addEventListener('change', e => {
+            const items = Array.from(e.target.files).map(f => ({
+                file: f,
+                path: normalizePath(f.webkitRelativePath || f.name)
+            }));
+            processUnifiedFileList(items);
+        }));
 
-            if (!apiConfig.apiKey) {
-                alert('APIキーを入力してください。');
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = `<i class="fa-solid fa-floppy-disk mr-1.5"></i>保存 & 認証テスト`;
+        async function processUnifiedFileList(fileItems) {
+            const candidateItems = fileItems.filter(item => {
+                const name = item.file.name.toLowerCase();
+                const ext = name.split('.').pop();
+                return ['sqlite', 'db', 'sqlite3', 'txt', 'zip'].includes(ext) || name.includes('line') || name.includes('talk');
+            });
+
+            if (candidateItems.length === 0) {
+                setProgressBar(false);
+                alert('フォルダー内に解析可能なトークデータ（Line.sqlite または .txt）が見つかりませんでした。');
                 return;
             }
 
-            // 認証テスト（軽量なAPIリクエスト）
-            const isValid = await testApiConnection();
-            apiConfig.isValidated = isValid;
+            setProgressBar(true, 'トーク履歴の解析中...', 20, `対象: ${candidateItems.length} 件`);
+            await yieldToUI(50);
 
-            if (isValid) {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(apiConfig));
-                updateApiStatusUI(true, '認証成功');
-                alert('APIキーの認証に成功し、保存しました。次回以降の入力は不要です。');
-                toggleApiModal(false);
-            } else {
-                updateApiStatusUI(false, '認証失敗');
-                alert('API接続テストに失敗しました。キーまたはモデル名をご確認ください。');
+            let logs = [];
+            let validCount = 0;
+            const fileFilterSelect = document.getElementById('file-filter');
+
+            for (let i = 0; i < candidateItems.length; i++) {
+                const item = candidateItems[i];
+                const f = item.file;
+                if (f.size === 0) continue;
+
+                const fname = f.name.toLowerCase();
+                const label = item.path || f.name;
+
+                if (fname.endsWith('.txt')) {
+                    setProgressBar(true, 'テキスト形式トークの解析中...', Math.round((i / candidateItems.length) * 100), f.name);
+                    await yieldToUI(20);
+                    const res = await parseLineTextFile(f, label, fileFilterSelect);
+                    if (res.success) validCount++;
+                    else logs.push(`❌ ${f.name}: ${res.reason}`);
+                } else if (fname.endsWith('.zip')) {
+                    setProgressBar(true, 'ZIPを展開中...', Math.round((i / candidateItems.length) * 100), f.name);
+                    await yieldToUI(20);
+                    try {
+                        const zip = await JSZip.loadAsync(f);
+                        const zipEntries = Object.values(zip.files).filter(e => !e.dir);
+                        for (let j = 0; j < zipEntries.length; j++) {
+                            const entry = zipEntries[j];
+                            const blob = await entry.async('blob');
+                            if (blob.size === 0) continue;
+                            const decompressedFile = new File([blob], entry.name);
+
+                            if (entry.name.toLowerCase().endsWith('.txt')) {
+                                const res = await parseLineTextFile(decompressedFile, entry.name, fileFilterSelect);
+                                if (res.success) validCount++;
+                            } else {
+                                const res = await parseSingleDatabase(decompressedFile, entry.name, fileFilterSelect);
+                                if (res.success) validCount++;
+                            }
+                        }
+                    } catch(e) {
+                        logs.push(`❌ ${f.name}: ZIP解凍エラー (${e.message})`);
+                    }
+                } else {
+                    setProgressBar(true, 'データベース解析中...', Math.round((i / candidateItems.length) * 100), f.name);
+                    await yieldToUI(20);
+                    const res = await parseSingleDatabase(f, label, fileFilterSelect);
+                    if (res.success) validCount++;
+                    else logs.push(`❌ ${f.name}: ${res.reason}`);
+                }
             }
 
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = `<i class="fa-solid fa-floppy-disk mr-1.5"></i>保存 & 認証テスト`;
-        }
+            setProgressBar(false);
 
-        function clearApiConfig() {
-            if (confirm('保存されているAPI設定をクリアしますか？')) {
-                localStorage.removeItem(STORAGE_KEY);
-                apiConfig = { provider: 'gemini', apiKey: '', baseUrl: '', model: 'gemini-1.5-flash', isValidated: false };
-                document.getElementById('apiKeyInput').value = '';
-                updateApiStatusUI(false, '未設定');
-                toggleApiModal(false);
+            if (validCount === 0) {
+                alert('【解析エラー】有効なトークデータベースが見つかりませんでした。\n\n' + logs.join('\n'));
+                updateStatus('エラー: 該当データなし');
+                return;
             }
+
+            applyFilters();
+            document.getElementById('drop-zone').style.display = 'none';
+            document.getElementById('app-container').style.display = 'flex';
+            document.getElementById('btn-reset').style.display = 'inline-flex';
+            updateStatus(`解析完了: ${allChatRooms.length} 件のトークを表示可能`);
         }
 
-        function updateApiStatusUI(isValid, text) {
-            const dot = document.getElementById('statusDot');
-            const statusText = document.getElementById('statusText');
-            const currentModelDisplay = document.getElementById('currentModelDisplay');
-
-            if (isValid) {
-                dot.className = "w-2 h-2 rounded-full bg-emerald-400 mr-2";
-                statusText.innerText = `認証済み (${apiConfig.provider})`;
-                currentModelDisplay.innerText = `使用モデル: ${apiConfig.provider} / ${apiConfig.model}`;
-            } else {
-                dot.className = "w-2 h-2 rounded-full bg-rose-400 mr-2";
-                statusText.innerText = text || '未認証';
-                currentModelDisplay.innerText = `使用モデル: 未設定`;
-            }
-        }
-
-        async function testApiConnection() {
+        async function parseLineTextFile(file, displayLabel, fileFilterSelect) {
             try {
-                const res = await callAiApi("Hi", true); // テスト送信
-                return !!res;
-            } catch (e) {
-                console.error("API Test Error:", e);
-                return false;
-            }
-        }
+                const text = await file.text();
+                const lines = text.split(/\r?\n/);
+                let title = file.name.replace(/\.txt$/i, '').replace(/^\[LINE\]\s*/i, '').replace(/とのトーク履歴$/i, '').replace(/トーク履歴/i, '').trim();
+                let messages = [];
+                let currentDate = '';
+                let currentMsg = null;
 
-        // -------------------------------------------------------------
-        // 2. 多種 API 呼び出しモジュール
-        // -------------------------------------------------------------
-        async function callAiApi(promptText, isTest = false) {
-            const { provider, apiKey, baseUrl, model } = apiConfig;
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
 
-            if (provider === 'gemini') {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: promptText }] }]
-                    })
-                });
-                const data = await res.json();
-                if (data.error) throw new Error(data.error.message);
-                return data.candidates[0].content.parts[0].text;
+                    if (i === 0 || line.startsWith('[LINE]')) {
+                        const m = line.match(/\[LINE\]\s*(.*?)とのトーク履歴/) || line.match(/\[LINE\]\s*(.*)/);
+                        if (m && m[1]) title = m[1].replace(/とのトーク履歴$/, '').trim();
+                    }
+                    if (/^(保存日時|Saved|日時)：/i.test(line)) continue;
 
-            } else if (provider === 'openai' || provider === 'custom') {
-                const ep = provider === 'openai' ? 'https://api.openai.com/v1/chat/completions' : `${baseUrl}/chat/completions`;
-                const res = await fetch(ep, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
-                    },
-                    body: JSON.stringify({
-                        model: model,
-                        messages: [{ role: 'user', content: promptText }]
-                    })
-                });
-                const data = await res.json();
-                if (data.error) throw new Error(data.error.message);
-                return data.choices[0].message.content;
+                    const dateMatch = line.match(/^(\d{4}[\/\.-年]\d{1,2}[\/\.-月]\d{1,2}日?(?:\([\s\S]*?\)|[（][\s\S]*?[）]|[A-Za-z]+|[日月火水木金土]曜日?)?)/);
+                    if (dateMatch && !line.includes('\t')) {
+                        currentDate = dateMatch[1];
+                        continue;
+                    }
 
-            } else if (provider === 'claude') {
-                const res = await fetch('https://api.anthropic.com/v1/messages', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': apiKey,
-                        'anthropic-version': '2023-06-01',
-                        'dangerously-allow-browser': 'true'
-                    },
-                    body: JSON.stringify({
-                        model: model,
-                        max_tokens: 2000,
-                        messages: [{ role: 'user', content: promptText }]
-                    })
-                });
-                const data = await res.json();
-                if (data.error) throw new Error(data.error.message);
-                return data.content[0].text;
-            }
-            throw new Error("サポートされていないプロバイダーです");
-        }
+                    const parts = line.split('\t');
+                    if (parts.length >= 2) {
+                        const timeCandidate = parts[0].trim();
+                        if (/^(?:午前|午後|AM|PM\s*)?\d{1,2}:\d{2}(?:\s*(?:AM|PM))?$/i.test(timeCandidate)) {
+                            if (currentMsg) messages.push(currentMsg);
 
-        // -------------------------------------------------------------
-        // 3. ファイル読み込み & パーサー (TXT / SQLite / ZIP)
-        // -------------------------------------------------------------
-        let SQL;
-        async function initSqlJs() {
-            SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
-        }
+                            let sender = 'システム';
+                            let msgText = '';
 
-        function handleDragOver(e) { e.preventDefault(); e.stopPropagation(); }
-        function handleDragLeave(e) { e.preventDefault(); e.stopPropagation(); }
-        function handleDrop(e) {
-            e.preventDefault(); e.stopPropagation();
-            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                processFile(e.dataTransfer.files[0]);
-            }
-        }
-        function handleFileSelect(e) {
-            if (e.target.files && e.target.files[0]) {
-                processFile(e.target.files[0]);
-            }
-        }
+                            if (parts.length >= 3) {
+                                sender = parts[1].trim();
+                                msgText = parts.slice(2).join('\t');
+                            } else {
+                                msgText = parts[1].trim();
+                            }
 
-        async function processFile(file) {
-            document.getElementById('loadedFileName').innerText = file.name;
-            const ext = file.name.split('.').pop().toLowerCase();
+                            const isMe = (sender === '自分' || sender === 'Me');
 
-            try {
-                if (ext === 'txt') {
-                    const text = await file.text();
-                    parseTxtFormat(text);
-                } else if (ext === 'sqlite' || ext === 'db') {
-                    const buf = await file.arrayBuffer();
-                    parseSqliteFormat(buf);
-                } else if (ext === 'zip') {
-                    const zip = await JSZip.loadAsync(file);
-                    let found = false;
-                    for (let filename of Object.keys(zip.files)) {
-                        if (filename.endsWith('.txt')) {
-                            const text = await zip.files[filename].async('string');
-                            parseTxtFormat(text);
-                            found = true; break;
-                        } else if (filename.endsWith('.sqlite') || filename.endsWith('.db')) {
-                            const buf = await zip.files[filename].async('arraybuffer');
-                            parseSqliteFormat(buf);
-                            found = true; break;
+                            currentMsg = {
+                                id: messages.length,
+                                text: msgText,
+                                isMe: isMe,
+                                senderName: sender,
+                                timeOnlyStr: timeCandidate,
+                                dateStr: currentDate,
+                                fullDateTimeStr: currentDate ? `${currentDate} ${timeCandidate}` : timeCandidate
+                            };
+                            continue;
                         }
                     }
-                    if (!found) alert('ZIP内に .txt または .sqlite ファイルが見つかりませんでした。');
+
+                    if (currentMsg) {
+                        currentMsg.text += '\n' + line;
+                    }
                 }
+                if (currentMsg) messages.push(currentMsg);
+
+                if (messages.length === 0) return { success: false, reason: 'メッセージ形式を判定できませんでした' };
+
+                fileCounter++;
+                const fileId = 'file_' + fileCounter;
+                fileMap[fileId] = { file, displayLabel, isText: true, messages };
+
+                const opt = document.createElement('option');
+                opt.value = fileId;
+                opt.innerText = displayLabel + ' (テキスト)';
+                fileFilterSelect.appendChild(opt);
+
+                allChatRooms.push({
+                    fileId, displayLabel, id: fileId, name: title || 'テキストトーク', count: messages.length,
+                    lastTime: messages[messages.length - 1]?.fullDateTimeStr || '', isText: true
+                });
+
+                return { success: true };
             } catch (err) {
-                alert('ファイルの読み込み中にエラーが発生しました: ' + err.message);
+                return { success: false, reason: err.message };
             }
         }
 
-        function parseTxtFormat(text) {
-            const lines = text.split('\n');
-            messages = [];
-            let currentDate = '';
-            let idCounter = 1;
-            
-            // 簡単なLINEテキスト形式パーサー
-            const dateRegex = /^(\d{4}\/\d{1,2}\/\d{1,2})\b/;
-            const timeMsgRegex = /^(\d{1,2}:\d{2})\t([^\t]+)\t(.*)$/;
+        async function parseSingleDatabase(file, displayLabel, fileFilterSelect) {
+            if (!SQL) return { success: false, reason: 'SQL.js Engine未初期化' };
+            let db = null;
+            try {
+                const buf = await file.arrayBuffer();
+                db = new SQL.Database(new Uint8Array(buf));
 
-            lines.forEach(line => {
-                line = line.trim();
-                if (!line) return;
+                const schema = detectSchema(db);
+                if (!schema.msgTable) return { success: false, reason: 'LINEメッセージテーブル未検出' };
 
-                const dateMatch = line.match(dateRegex);
-                if (dateMatch) {
-                    currentDate = dateMatch[1];
-                    return;
-                }
+                fileCounter++;
+                const fileId = 'file_' + fileCounter;
 
-                const msgMatch = line.match(timeMsgRegex);
-                if (msgMatch) {
-                    const time = msgMatch[1];
-                    const sender = msgMatch[2];
-                    const content = msgMatch[3];
+                const { userMap, chatMap } = loadDictionaries(db, schema);
+                fileMap[fileId] = { file, displayLabel, schema, isText: false, userMap, chatMap };
 
-                    messages.push({
-                        id: idCounter++,
-                        sender: sender,
-                        text: content,
-                        date: currentDate,
-                        time: time,
-                        isMe: sender === '自分' || sender === 'ME'
-                    });
-                }
-            });
+                const opt = document.createElement('option');
+                opt.value = fileId;
+                opt.innerText = displayLabel;
+                fileFilterSelect.appendChild(opt);
 
-            renderTimeline();
+                const rooms = fetchChatRooms(db, schema, userMap, chatMap, fileId, displayLabel);
+                allChatRooms.push(...rooms);
+
+                return { success: true };
+            } catch (err) {
+                return { success: false, reason: err.message };
+            } finally {
+                if (db) db.close();
+            }
         }
 
-        function parseSqliteFormat(buffer) {
-            const db = new SQL.Database(new Uint8Array(buffer));
-            messages = [];
-            let idCounter = 1;
+        function detectSchema(db) {
+            let tables = [];
+            try {
+                tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'")[0]?.values.map(r => r[0]) || [];
+            } catch(e) { return {}; }
+
+            const iosMsgTable = tables.find(t => /^ZMESSAGE$/i.test(t) || /^ZSTOREDMESSAGE$/i.test(t) || /^Z_MESSAGE$/i.test(t));
+            const iosUserTable = tables.find(t => /^ZUSER$/i.test(t) || /^ZUSERHEADER$/i.test(t) || /^ZCONTACT$/i.test(t));
+            const iosChatTable = tables.find(t => /^ZCHAT$/i.test(t));
+
+            if (iosMsgTable || iosUserTable || iosChatTable) {
+                let cols = [];
+                if (iosMsgTable) {
+                    cols = db.exec(`PRAGMA table_info("${iosMsgTable}")`)[0].values.map(c => c[1]);
+                }
+                return {
+                    type: 'iOS',
+                    msgTable: iosMsgTable,
+                    chatCol: cols.find(c => /^ZCHAT$/i.test(c) || /^ZCHATID$/i.test(c)) || 'ZCHAT',
+                    textCol: cols.find(c => /^ZTEXT$/i.test(c) || /^ZBODY$/i.test(c)) || 'ZTEXT',
+                    timeCol: cols.find(c => /^ZTIMESTAMP$/i.test(c) || /^ZCREATEDTIME$/i.test(c) || /^ZDATE$/i.test(c)) || 'ZTIMESTAMP',
+                    isMeCol: cols.find(c => /^ZISFROMME$/i.test(c) || /^ZIS_ME$/i.test(c)) || null,
+                    senderCol: cols.find(c => /^ZSENDER$/i.test(c) || /^ZSENDERID$/i.test(c)) || 'ZSENDER',
+                    contentTypeCol: cols.find(c => /^ZCONTENTTYPE$/i.test(c) || /^ZTYPE$/i.test(c)) || 'ZCONTENTTYPE',
+                    userTable: iosUserTable,
+                    chatTable: iosChatTable
+                };
+            }
+
+            const androidMsgTable = tables.find(t => /^chat_history$/i.test(t) || /^messages$/i.test(t));
+            const androidUserTable = tables.find(t => /contacts|friends|users/i.test(t));
+            const androidChatTable = tables.find(t => /^chat$|^groups$/i.test(t));
+
+            if (androidMsgTable || androidUserTable || androidChatTable) {
+                let cols = [];
+                if (androidMsgTable) {
+                    cols = db.exec(`PRAGMA table_info("${androidMsgTable}")`)[0].values.map(c => c[1]);
+                }
+                return {
+                    type: 'Android',
+                    msgTable: androidMsgTable,
+                    chatCol: cols.find(c => /chat_id/i.test(c)) || 'chat_id',
+                    textCol: cols.find(c => /content|message/i.test(c)) || 'content',
+                    timeCol: cols.find(c => /created_time|created_at/i.test(c)) || 'created_time',
+                    isMeCol: cols.find(c => /is_sent|status/i.test(c)) || null,
+                    senderCol: cols.find(c => /from_mid|sender_mid|writer_mid/i.test(c)) || 'from_mid',
+                    contentTypeCol: cols.find(c => /contentType|type/i.test(c)) || 'contentType',
+                    userTable: androidUserTable,
+                    chatTable: androidChatTable
+                };
+            }
+            return {};
+        }
+
+        function loadDictionaries(db, sch) {
+            let userMap = {};
+            let chatMap = {};
+
+            const userTables = ['ZUSER', 'ZUSERHEADER', 'ZCONTACT', 'contacts', 'friends', 'users'];
+            userTables.forEach(tName => {
+                try {
+                    const res = db.exec(`SELECT * FROM "${tName}"`)[0];
+                    if (res && res.values) {
+                        const cols = res.columns.map(c => c.toUpperCase());
+                        const pkIdx = cols.indexOf('Z_PK') !== -1 ? cols.indexOf('Z_PK') : cols.indexOf('ROWID');
+                        const midIdx = cols.indexOf('ZMID') !== -1 ? cols.indexOf('ZMID') : cols.indexOf('MID');
+                        
+                        const priorityCols = ['ZCUSTOMNAME', 'CUSTOM_NAME', 'ZNAME', 'NAME', 'ZADDRESSBOOKNAME', 'DISPLAY_NAME', 'SERVER_NAME', 'ZPHONEBOOKNAME', 'NICKNAME', 'ZREALNAME', 'ZCONTACTNAME'];
+                        const nameIndices = priorityCols.map(p => cols.indexOf(p)).filter(idx => idx !== -1);
+
+                        res.values.forEach(r => {
+                            let nameVal = null;
+                            for (const idx of nameIndices) {
+                                if (r[idx] !== null && r[idx] !== undefined && String(r[idx]).trim() !== '') {
+                                    nameVal = String(r[idx]).trim();
+                                    break;
+                                }
+                            }
+                            if (nameVal) {
+                                if (pkIdx !== -1 && r[pkIdx] !== null) {
+                                    const pkKey = String(r[pkIdx]).trim();
+                                    userMap[pkKey] = nameVal;
+                                    globalUserMap[pkKey] = nameVal;
+                                }
+                                if (midIdx !== -1 && r[midIdx] !== null) {
+                                    const midKey = String(r[midIdx]).trim();
+                                    userMap[midKey] = nameVal;
+                                    globalUserMap[midKey] = nameVal;
+                                }
+                            }
+                        });
+                    }
+                } catch(e){}
+            });
 
             try {
-                // Typical iOS/Android LINE DB Query fallback
-                let res = db.exec("SELECT ZTEXT, ZTIMESTAMP, ZSENDER FROM ZMESSAGE WHERE ZTEXT IS NOT NULL ORDER BY ZTIMESTAMP ASC;");
-                if (res.length > 0) {
-                    res[0].values.forEach(row => {
-                        const content = row[0];
-                        const ts = row[1];
-                        const sender = row[2] || '相手';
-                        const d = parseTimestamp(ts);
-
-                        messages.push({
-                            id: idCounter++,
-                            sender: sender,
-                            text: content,
-                            date: formatDateHeader(d),
-                            time: formatTime(d),
-                            isMe: sender === 'ME'
+                const gRes = db.exec(`SELECT * FROM "ZGROUP"`)[0];
+                if (gRes && gRes.values) {
+                    const cols = gRes.columns.map(c => c.toUpperCase());
+                    const idIdx = cols.indexOf('ZID') !== -1 ? cols.indexOf('ZID') : cols.indexOf('ZMID');
+                    const nameIdx = cols.indexOf('ZNAME') !== -1 ? cols.indexOf('ZNAME') : cols.indexOf('NAME');
+                    if (idIdx !== -1 && nameIdx !== -1) {
+                        gRes.values.forEach(r => {
+                            if (r[idIdx] && r[nameIdx]) {
+                                const gId = String(r[idIdx]).trim();
+                                const gName = String(r[nameIdx]).trim();
+                                chatMap[gId] = gName;
+                                globalChatMap[gId] = gName;
+                            }
                         });
-                    });
+                    }
                 }
-            } catch (e) {
-                alert('SQLite構造の解析に失敗しました。LINEの互換性があるDBファイルか確認してください。');
+            } catch(e){}
+
+            if (sch.chatTable) {
+                try {
+                    const res = db.exec(`SELECT * FROM "${sch.chatTable}"`)[0];
+                    if (res && res.values) {
+                        const cols = res.columns.map(c => c.toUpperCase());
+                        const pkIdx = cols.indexOf('Z_PK') !== -1 ? cols.indexOf('Z_PK') : cols.indexOf('ROWID');
+                        const midIdx = cols.indexOf('ZMID') !== -1 ? cols.indexOf('ZMID') : cols.indexOf('MID');
+                        const userLinkIdx = cols.indexOf('ZUSER') !== -1 ? cols.indexOf('ZUSER') : cols.indexOf('USER_ID');
+
+                        const priorityCols = ['ZTITLE', 'TITLE', 'ZNAME', 'NAME', 'ZCUSTOMNAME', 'CUSTOM_NAME', 'CHAT_NAME'];
+                        const nameIndices = priorityCols.map(p => cols.indexOf(p)).filter(idx => idx !== -1);
+
+                        res.values.forEach(r => {
+                            let nameVal = null;
+                            for (const idx of nameIndices) {
+                                if (r[idx] !== null && r[idx] !== undefined && String(r[idx]).trim() !== '') {
+                                    nameVal = String(r[idx]).trim();
+                                    break;
+                                }
+                            }
+
+                            if (!nameVal && userLinkIdx !== -1 && r[userLinkIdx] !== null) {
+                                const targetUserPk = String(r[userLinkIdx]).trim();
+                                if (userMap[targetUserPk] || globalUserMap[targetUserPk]) {
+                                    nameVal = userMap[targetUserPk] || globalUserMap[targetUserPk];
+                                }
+                            }
+
+                            if (nameVal) {
+                                if (pkIdx !== -1 && r[pkIdx] !== null) {
+                                    const pkKey = String(r[pkIdx]).trim();
+                                    chatMap[pkKey] = nameVal;
+                                    globalChatMap[pkKey] = nameVal;
+                                }
+                                if (midIdx !== -1 && r[midIdx] !== null) {
+                                    const midKey = String(r[midIdx]).trim();
+                                    chatMap[midKey] = nameVal;
+                                    globalChatMap[midKey] = nameVal;
+                                }
+                            }
+                        });
+                    }
+                } catch(e){}
             }
-            renderTimeline();
+
+            return { userMap, chatMap };
         }
 
-        // -------------------------------------------------------------
-        // 4. タイムライン描画 & ジャンプ機能
-        // -------------------------------------------------------------
-        function renderTimeline() {
-            const container = document.getElementById('chatTimeline');
-            const dropZone = document.getElementById('dropZone');
-            
-            dropZone.classList.add('hidden');
-            container.classList.remove('hidden');
-            container.innerHTML = '';
+        function fetchChatRooms(db, sch, userMap, chatMap, fileId, displayLabel) {
+            if (!sch.msgTable) return [];
 
-            let lastDate = '';
+            const query = `
+                SELECT "${sch.chatCol}", COUNT(*), MAX("${sch.timeCol}")
+                FROM "${sch.msgTable}"
+                WHERE "${sch.chatCol}" IS NOT NULL AND "${sch.chatCol}" != ''
+                GROUP BY "${sch.chatCol}"
+                ORDER BY 3 DESC
+            `;
+            let res;
+            try { res = db.exec(query)[0]; } catch(e) { return []; }
+            if (!res || !res.values) return [];
 
-            messages.forEach((m) => {
-                if (m.date && m.date !== lastDate) {
-                    const dateDiv = document.createElement('div');
-                    dateDiv.className = "text-center my-3";
-                    dateDiv.innerHTML = `<span class="bg-black/20 text-white text-[10px] px-3 py-1 rounded-full">${escapeHtml(m.date)}</span>`;
-                    container.appendChild(dateDiv);
-                    lastDate = m.date;
+            return res.values.map(r => {
+                const chatId = String(r[0]).trim();
+                let name = chatMap[chatId] || globalChatMap[chatId] || null;
+                const safeId = chatId.replace(/'/g, "''");
+
+                if (!name && sch.chatTable) {
+                    try {
+                        const chatTableInfo = db.exec(`PRAGMA table_info("${sch.chatTable}")`)[0]?.values.map(c => c[1].toUpperCase()) || [];
+                        let whereConds = [];
+                        if (chatTableInfo.includes('Z_PK')) whereConds.push(`CAST(Z_PK AS TEXT) = '${safeId}'`);
+                        if (chatTableInfo.includes('ZMID')) whereConds.push(`CAST(ZMID AS TEXT) = '${safeId}'`);
+
+                        if (whereConds.length > 0) {
+                            const chatRowQ = `SELECT * FROM "${sch.chatTable}" WHERE ${whereConds.join(' OR ')}`;
+                            const chatRowRes = db.exec(chatRowQ)[0];
+                            if (chatRowRes && chatRowRes.values && chatRowRes.values.length > 0) {
+                                const rowVals = chatRowRes.values[0];
+                                const cols = chatRowRes.columns.map(c => c.toUpperCase());
+                                const uIdx = cols.indexOf('ZUSER');
+                                const nIdx = cols.indexOf('ZNAME') !== -1 ? cols.indexOf('ZNAME') : cols.indexOf('NAME');
+
+                                if (nIdx !== -1 && rowVals[nIdx]) name = String(rowVals[nIdx]).trim();
+                                if (!name && uIdx !== -1 && rowVals[uIdx] !== null) {
+                                    const uPk = String(rowVals[uIdx]).trim();
+                                    if (userMap[uPk] || globalUserMap[uPk]) name = userMap[uPk] || globalUserMap[uPk];
+                                }
+                            }
+                        }
+                    } catch(e){}
                 }
 
-                const msgDiv = document.createElement('div');
-                msgDiv.id = `msg-${m.id}`;
-                msgDiv.className = `flex flex-col ${m.isMe ? 'items-end' : 'items-start'} transition-all duration-300 p-1 rounded-lg`;
+                if (!name && sch.senderCol) {
+                    try {
+                        const senderQ = `
+                            SELECT "${sch.senderCol}", COUNT(*) 
+                            FROM "${sch.msgTable}" 
+                            WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}' 
+                            AND "${sch.senderCol}" IS NOT NULL AND "${sch.senderCol}" != '' AND "${sch.senderCol}" != '0' AND "${sch.senderCol}" != 'null'
+                            GROUP BY "${sch.senderCol}" 
+                            ORDER BY 2 DESC LIMIT 5
+                        `;
+                        const senderRes = db.exec(senderQ)[0];
+                        if (senderRes && senderRes.values) {
+                            for (const sRow of senderRes.values) {
+                                const sId = String(sRow[0]).trim();
+                                if (userMap[sId] || globalUserMap[sId]) {
+                                    name = userMap[sId] || globalUserMap[sId];
+                                    break;
+                                }
+                            }
+                        }
+                    } catch(e){}
+                }
 
-                const bubbleClass = m.isMe ? 'chat-bubble-right text-slate-800' : 'chat-bubble-left text-slate-800';
-                
-                msgDiv.innerHTML = `
-                    <div class="flex items-center space-x-1 mb-0.5 text-[10px] text-slate-600">
-                        <span class="font-bold cursor-pointer hover:underline text-indigo-900" onclick="copyMsgId(${m.id})" title="クリックでID指定">#${m.id}</span>
-                        <span>${escapeHtml(m.sender)}</span>
-                    </div>
-                    <div class="flex items-end space-x-1.5 ${m.isMe ? 'flex-row-reverse space-x-reverse' : ''}">
-                        <div class="max-w-[280px] p-2.5 text-xs shadow-sm blur-target ${bubbleClass} break-words whitespace-pre-wrap">
-                            ${escapeHtml(m.text)}
-                        </div>
-                        <span class="text-[9px] text-slate-600 shrink-0">${escapeHtml(m.time)}</span>
-                    </div>
-                `;
-                container.appendChild(msgDiv);
+                if (!name) name = `トーク相手 (${chatId})`;
+
+                const dateObj = parseTimestamp(r[2]);
+                return { fileId, displayLabel, id: chatId, name, count: r[1], lastTime: dateObj ? formatDate(dateObj) : '日時不明' };
+            });
+        }
+
+        function applyFilters() {
+            const selectedFileId = document.getElementById('file-filter').value;
+            const searchQuery = document.getElementById('chat-search').value.toLowerCase().trim();
+
+            const filtered = allChatRooms.filter(item => {
+                const matchesFile = (selectedFileId === 'ALL' || item.fileId === selectedFileId);
+                const matchesSearch = item.name.toLowerCase().includes(searchQuery) || item.displayLabel.toLowerCase().includes(searchQuery);
+                return matchesFile && matchesSearch;
             });
 
-            document.getElementById('msgCount').innerText = `メッセージ数: ${messages.length}`;
+            renderChatList(filtered);
         }
 
-        // メッセージへジャンプ機能（スクロール ＆ ハイライト）
-        function jumpToMessage(msgId) {
-            const targetEl = document.getElementById(`msg-${msgId}`);
-            if (targetEl) {
-                targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                targetEl.classList.remove('highlight-msg');
-                void targetEl.offsetWidth; // リフロー発生させてアニメーション再始動
-                targetEl.classList.add('highlight-msg');
-            } else {
-                alert(`メッセージ ID #${msgId} は画面上に見つかりませんでした。`);
+        function renderChatList(list) {
+            const container = document.getElementById('chat-list');
+            container.innerHTML = '';
+            if (list.length === 0) {
+                container.innerHTML = '<div style="padding:20px; text-align:center; color:#888; font-size:13px;">該当するトークが見つかりません</div>';
+                return;
+            }
+            list.forEach(item => {
+                const el = document.createElement('div');
+                el.className = `chat-item ${activeChat && activeChat.id === item.id && activeChat.fileId === item.fileId ? 'active' : ''}`;
+                el.innerHTML = `
+                    <div class="avatar">${escapeHtml(item.name.charAt(0))}</div>
+                    <div class="chat-meta">
+                        <div class="chat-title">${escapeHtml(item.name)}</div>
+                        <span class="chat-file-tag">📁 ${escapeHtml(item.displayLabel)}</span>
+                        <div class="chat-sub"><span>${item.count}件</span><span>${item.lastTime}</span></div>
+                    </div>
+                `;
+                el.onclick = () => {
+                    document.querySelectorAll('.chat-item').forEach(i => i.classList.remove('active'));
+                    el.classList.add('active');
+                    activeChat = item;
+                    loadMessagesOnDemand(item);
+                };
+                container.appendChild(el);
+            });
+        }
+
+        async function getRawMessagesForChat(chatItem) {
+            const fileObj = fileMap[chatItem.fileId];
+            if (!fileObj) return [];
+            if (fileObj.isText) return fileObj.messages;
+
+            let db = null;
+            try {
+                const buf = await fileObj.file.arrayBuffer();
+                db = new SQL.Database(new Uint8Array(buf));
+                const sch = fileObj.schema;
+
+                const safeId = String(chatItem.id).replace(/'/g, "''");
+                const query = `
+                    SELECT 
+                        "${sch.textCol}", 
+                        ${sch.isMeCol ? `"${sch.isMeCol}"` : 'NULL'}, 
+                        "${sch.senderCol}", 
+                        "${sch.timeCol}", 
+                        "${sch.contentTypeCol || sch.textCol}"
+                    FROM "${sch.msgTable}"
+                    WHERE CAST("${sch.chatCol}" AS TEXT) = '${safeId}'
+                    ORDER BY "${sch.timeCol}" ASC
+                `;
+
+                let res = db.exec(query)[0];
+                db.close();
+                db = null;
+
+                if (!res || !res.values) return [];
+
+                return res.values.map((r, idx) => {
+                    const rawText = r[0];
+                    const isMeVal = r[1];
+                    const senderId = String(r[2] !== null && r[2] !== undefined ? r[2] : '').trim();
+                    const rawTime = r[3];
+                    const msgContentType = Number(r[4]);
+
+                    let isMe = false;
+                    if (isMeVal !== null && isMeVal !== undefined) {
+                        isMe = (Number(isMeVal) === 1 || isMeVal === true || String(isMeVal) === '1');
+                    } else {
+                        isMe = (!senderId || senderId === '0' || senderId === '' || senderId.toLowerCase() === 'null');
+                    }
+
+                    let text = rawText;
+                    if (!text || text.trim() === '' || [1, 2, 3, 6, 7].includes(msgContentType)) {
+                        switch (msgContentType) {
+                            case 0: text = rawText || ''; break;
+                            case 1: text = '[📷 画像]'; break;
+                            case 2: text = '[🎥 動画]'; break;
+                            case 3: text = '[🎵 音声メッセージ]'; break;
+                            case 6: text = '[🎨 スタンプ]'; break;
+                            case 7: text = '[📍 位置情報]'; break;
+                            default: text = (rawText && rawText.trim() !== '') ? rawText : '[📁 ファイル/システムメッセージ]'; break;
+                        }
+                    }
+
+                    let senderName = '相手';
+                    if (isMe) {
+                        senderName = '自分';
+                    } else if (fileObj.userMap?.[senderId] || globalUserMap[senderId]) {
+                        senderName = fileObj.userMap?.[senderId] || globalUserMap[senderId];
+                    } else if (chatItem.name && !chatItem.name.startsWith('トーク相手')) {
+                        senderName = chatItem.name;
+                    } else if (senderId) {
+                        senderName = `ユーザー (${senderId.length > 6 ? senderId.slice(-4) : senderId})`;
+                    }
+
+                    const dateObj = parseTimestamp(rawTime);
+
+                    return {
+                        id: idx,
+                        text,
+                        isMe,
+                        senderId,
+                        senderName,
+                        timeOnlyStr: dateObj ? formatTime(dateObj) : '',
+                        dateStr: dateObj ? formatDateHeader(dateObj) : '日時不明',
+                        fullDateTimeStr: dateObj ? `${formatDate(dateObj)} ${formatTime(dateObj)}` : '日時不明'
+                    };
+                });
+            } catch (err) {
+                if (db) db.close();
+                return [];
             }
         }
 
-        function copyMsgId(id) {
-            const textarea = document.getElementById('aiPromptInput');
-            textarea.value += ` [#${id}]`;
-            textarea.focus();
+        async function loadMessagesOnDemand(chatItem) {
+            setProgressBar(true, 'メッセージを取得中...', 50, chatItem.name);
+            await yieldToUI(30);
+
+            rawMessages = await getRawMessagesForChat(chatItem);
+            displayMessagesInUI(chatItem);
+            setProgressBar(false);
         }
 
-        // -------------------------------------------------------------
-        // 5. AI 分析 & 結果レンダリング（部分移動リンク埋め込み）
-        // -------------------------------------------------------------
-        function setPrompt(type) {
-            const input = document.getElementById('aiPromptInput');
-            if (type === '要約') input.value = 'この会話全体の要点を箇条書きで分かりやすく要約してください。';
-            if (type === '感情') input.value = '2人の発言傾向から、関係性や感情のやり取り（熱量、親密さ等）を分析してください。';
-            if (type === 'タスク') input.value = '会話内で決められた約束、スケジュール、タスクを抽出してください。';
-            if (type === 'タイムライン') input.value = '会話の中で重要な展開があった瞬間を時系列順に抽出してください。';
+        function displayMessagesInUI(chatItem) {
+            document.getElementById('chat-header').style.display = 'flex';
+            document.getElementById('chat-header-title').innerText = chatItem.name;
+            document.getElementById('chat-header-info').innerText = `${chatItem.count}件のメッセージ`;
+            renderMessagesUI(rawMessages);
+            document.body.classList.add('show-chat');
+        }
+
+        function backToList() { document.body.classList.remove('show-chat'); }
+
+        function renderMessagesUI(messages) {
+            document.getElementById('empty-state').style.display = 'none';
+
+            const msgContainer = document.getElementById('messages-container');
+            msgContainer.innerHTML = '';
+
+            let lastDateStr = '';
+            messages.forEach(m => {
+                if (m.dateStr && m.dateStr !== lastDateStr) {
+                    const dateDiv = document.createElement('div');
+                    dateDiv.className = 'date-divider';
+                    dateDiv.dataset.date = m.dateStr;
+                    dateDiv.innerText = m.dateStr;
+                    msgContainer.appendChild(dateDiv);
+                    lastDateStr = m.dateStr;
+                }
+
+                const row = document.createElement('div');
+                row.id = `msg-${m.id}`;
+                row.dataset.id = m.id;
+                row.dataset.date = m.dateStr;
+                row.className = `msg-row ${m.isMe ? 'me' : 'other'}`;
+                row.innerHTML = `
+                    <input type="checkbox" class="msg-select-check" onchange="updateSelectedCount()" title="印刷対象に選択">
+                    ${!m.isMe ? `<div class="msg-avatar">${escapeHtml(m.senderName.charAt(0))}</div>` : ''}
+                    <div class="msg-content">
+                        <div class="msg-header-line">
+                            <span class="msg-sender-name">${escapeHtml(m.senderName)}</span>
+                            <div class="msg-tools">
+                                <button class="btn-msg-tool" onclick="toggleMosaic(this)">💧 ぼかし</button>
+                                <button class="btn-msg-tool" onclick="toggleHide(this)">🙈 隠す</button>
+                            </div>
+                        </div>
+                        <div class="msg-body-wrap">
+                            <div class="bubble">${escapeHtml(m.text)}</div>
+                        </div>
+                        <div class="msg-datetime-sub">${m.fullDateTimeStr}</div>
+                    </div>
+                `;
+                msgContainer.appendChild(row);
+            });
+
+            updateSelectedCount();
+            updateStatus(`表示完了: ${activeChat.name} (${messages.length}件)`);
+            const view = document.getElementById('chat-view');
+            view.scrollTop = view.scrollHeight;
+        }
+
+        function toggleSelectAll(selectAll) {
+            document.querySelectorAll('.msg-select-check').forEach(cb => {
+                cb.checked = selectAll;
+            });
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const selected = document.querySelectorAll('.msg-select-check:checked').length;
+            const modalCount = document.getElementById('modal-selected-count');
+            if (modalCount) modalCount.innerText = selected;
+        }
+
+        function toggleMosaic(btn) {
+            const bubble = btn.closest('.msg-content').querySelector('.bubble');
+            if (bubble) bubble.classList.toggle('is-mosaic');
+        }
+
+        function toggleHide(btn) {
+            const row = btn.closest('.msg-row');
+            if (row) row.classList.toggle('is-hidden-msg');
+        }
+
+        function resetAllMasks() {
+            document.querySelectorAll('.is-mosaic').forEach(el => el.classList.remove('is-mosaic'));
+            document.querySelectorAll('.is-hidden-msg').forEach(el => el.classList.remove('is-hidden-msg'));
+        }
+
+        let searchMatches = [];
+        function onSearchInput(query) {
+            const dropdown = document.getElementById('search-dropdown');
+            const countSpan = document.getElementById('search-count');
+            dropdown.innerHTML = '';
+            
+            if (!query.trim()) {
+                dropdown.style.display = 'none';
+                countSpan.innerText = '';
+                return;
+            }
+
+            const q = query.toLowerCase();
+            searchMatches = rawMessages.filter(m => m.text.toLowerCase().includes(q));
+            countSpan.innerText = `${searchMatches.length}件`;
+
+            if (searchMatches.length === 0) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            searchMatches.slice(0, 30).forEach((m) => {
+                const item = document.createElement('div');
+                item.className = 'search-result-item';
+                item.innerHTML = `
+                    <div class="search-result-sender">${escapeHtml(m.senderName)}</div>
+                    <div class="search-result-text">${escapeHtml(m.text)}</div>
+                    <div class="search-result-time">${escapeHtml(m.fullDateTimeStr)}</div>
+                `;
+                item.onclick = () => {
+                    scrollToMessage(m.id);
+                    dropdown.style.display = 'none';
+                };
+                dropdown.appendChild(item);
+            });
+            dropdown.style.display = 'block';
+        }
+
+        function scrollToMessage(msgId) {
+            const el = document.getElementById(`msg-${msgId}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.style.backgroundColor = '#fff3bf';
+                setTimeout(() => { el.style.backgroundColor = ''; }, 2000);
+            }
+        }
+
+        document.addEventListener('click', (e) => {
+            const box = document.querySelector('.msg-search-box');
+            const dropdown = document.getElementById('search-dropdown');
+            if (box && !box.contains(e.target) && dropdown) dropdown.style.display = 'none';
+        });
+
+        /* --- 印刷機能エリア --- */
+
+        function openPrintModal() {
+            if (!activeChat) {
+                alert('印刷対象のトークを選択してください。');
+                return;
+            }
+            updateSelectedCount();
+            
+            const aiWrap = document.getElementById('print-opt-include-ai-wrap');
+            if (latestAiResultText) {
+                aiWrap.style.display = 'flex';
+                document.getElementById('print-opt-include-ai').checked = true;
+            } else {
+                aiWrap.style.display = 'none';
+                document.getElementById('print-opt-include-ai').checked = false;
+            }
+
+            document.getElementById('print-modal').style.display = 'flex';
+        }
+
+        function openPrintModalWithAi(aiText) {
+            latestAiResultText = aiText;
+            openPrintModal();
+        }
+
+        function closePrintModal() {
+            document.getElementById('print-modal').style.display = 'none';
+        }
+
+        function updatePrintModalState() {
+            updateSelectedCount();
+        }
+
+        function executePrint() {
+            const optIncludeChat = document.getElementById('print-opt-include-chat').checked;
+            const optIncludeAi = document.getElementById('print-opt-include-ai').checked;
+            const optScopeSelected = document.getElementById('print-opt-scope-selected').checked;
+            const optTextMode = document.getElementById('print-opt-text-mode').checked;
+            const optHeader = document.getElementById('print-opt-header').checked;
+            const optTime = document.getElementById('print-opt-time').checked;
+            const optSender = document.getElementById('print-opt-sender').checked;
+            const optHideMasked = document.getElementById('print-opt-hide-masked').checked;
+            const optBg = document.getElementById('print-opt-bg').checked;
+
+            if (!optIncludeChat && !optIncludeAi) {
+                alert('印刷対象（トーク内容 または AI分析結果）のいずれかを有効にしてください。');
+                return;
+            }
+
+            const selectedRows = document.querySelectorAll('.msg-row .msg-select-check:checked');
+            if (optIncludeChat && optScopeSelected && selectedRows.length === 0) {
+                alert('印刷するメッセージが選択されていません。\nメッセージ横のチェックボックス（☑）を選択してください。');
+                return;
+            }
+
+            document.querySelectorAll('.msg-row').forEach(row => {
+                const isChecked = row.querySelector('.msg-select-check').checked;
+                if (isChecked) {
+                    row.classList.add('is-selected-for-print');
+                } else {
+                    row.classList.remove('is-selected-for-print');
+                }
+            });
+
+            document.querySelectorAll('.date-divider').forEach(div => {
+                const dateVal = div.dataset.date;
+                const hasSelected = Array.from(document.querySelectorAll(`.msg-row[data-date="${dateVal}"]`))
+                                         .some(r => !optScopeSelected || r.classList.contains('is-selected-for-print'));
+                if (hasSelected) div.classList.add('has-selected-msg');
+                else div.classList.remove('has-selected-msg');
+            });
+
+            // AI分析結果の印刷領域を準備
+            const aiContainer = document.getElementById('ai-print-only-container');
+            if (optIncludeAi && latestAiResultText) {
+                aiContainer.innerHTML = `<b>🤖 【AI分析結果】</b><br><br>${escapeHtml(latestAiResultText).replace(/\n/g, '<br>')}`;
+            } else {
+                aiContainer.innerHTML = '';
+            }
+
+            if (optTextMode && optIncludeChat) {
+                const textPrintContainer = document.getElementById('official-text-print-view');
+                const now = new Date();
+                const nowStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${formatTime(now)}`;
+                
+                let textLines = [];
+                if (optHeader) {
+                    textLines.push(`[LINE] ${activeChat.name}とのトーク履歴`);
+                    textLines.push(`保存日時：${nowStr}\n`);
+                }
+
+                let currentPrintedDate = '';
+
+                rawMessages.forEach(m => {
+                    const rowEl = document.getElementById(`msg-${m.id}`);
+                    if (!rowEl) return;
+
+                    if (optScopeSelected && !rowEl.classList.contains('is-selected-for-print')) return;
+                    if (optHideMasked && (rowEl.classList.contains('is-hidden-msg') || rowEl.querySelector('.is-mosaic'))) return;
+
+                    if (m.dateStr && m.dateStr !== currentPrintedDate) {
+                        textLines.push(`\n${m.dateStr}`);
+                        currentPrintedDate = m.dateStr;
+                    }
+
+                    const timePart = optTime ? (m.timeOnlyStr || '00:00') : '';
+                    const senderPart = optSender ? m.senderName : '';
+                    
+                    textLines.push(`${timePart}\t${senderPart}\t${m.text}`);
+                });
+
+                textPrintContainer.innerText = textLines.join('\n');
+            }
+
+            const body = document.body;
+            body.classList.toggle('print-selected-only', optScopeSelected);
+            body.classList.toggle('print-text-mode', optTextMode);
+            body.classList.toggle('print-hide-header', !optHeader);
+            body.classList.toggle('print-hide-time', !optTime);
+            body.classList.toggle('print-hide-sender', !optSender);
+            body.classList.toggle('print-hide-masked', optHideMasked);
+            body.classList.toggle('print-keep-bg', optBg && !optTextMode);
+
+            body.classList.toggle('print-hide-chat', !optIncludeChat);
+            body.classList.toggle('print-show-ai', optIncludeAi && Boolean(latestAiResultText));
+
+            closePrintModal();
+            window.print();
+        }
+
+        /* --- AI分析 & 履歴管理エリア --- */
+
+        function openAiModal() {
+            if (allChatRooms.length === 0) {
+                alert('トークデータが読み込まれていません。');
+                return;
+            }
+            renderAiRoomChecklist();
+            renderAiHistoryList();
+            document.getElementById('ai-modal').style.display = 'flex';
+            
+            const savedKey = document.getElementById('ai-api-key').value.trim();
+            if (savedKey && document.getElementById('ai-model-select').disabled) {
+                checkApiKeyAuth();
+            }
+        }
+
+        function closeAiModal() {
+            document.getElementById('ai-modal').style.display = 'none';
+        }
+
+        function switchAiTab(tab) {
+            const runContent = document.getElementById('ai-tab-run-content');
+            const historyContent = document.getElementById('ai-tab-history-content');
+            const btnRun = document.getElementById('ai-tab-btn-run');
+            const btnHistory = document.getElementById('ai-tab-btn-history');
+
+            if (tab === 'run') {
+                runContent.style.display = 'block';
+                historyContent.style.display = 'none';
+                btnRun.classList.add('active');
+                btnHistory.classList.remove('active');
+            } else {
+                runContent.style.display = 'none';
+                historyContent.style.display = 'block';
+                btnRun.classList.remove('active');
+                btnHistory.classList.add('active');
+                renderAiHistoryList();
+            }
+        }
+
+        function saveApiKey(key) {
+            localStorage.setItem('gemini_api_key', key.trim());
+        }
+
+        async function checkApiKeyAuth() {
+            const apiKey = document.getElementById('ai-api-key').value.trim();
+            const statusEl = document.getElementById('ai-auth-status');
+            const modelSelect = document.getElementById('ai-model-select');
+            
+            if (!apiKey) {
+                statusEl.style.color = '#e11d48';
+                statusEl.innerText = '⚠️ APIキーを入力してください。';
+                modelSelect.disabled = true;
+                modelSelect.innerHTML = '<option value="">🔒 APIキー認証確認後に選択可能になります</option>';
+                return;
+            }
+
+            statusEl.style.color = '#64748b';
+            statusEl.innerText = '🔄 Google APIサーバと通信テスト中...';
+
+            try {
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+                const response = await fetch(endpoint);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    modelSelect.innerHTML = '';
+
+                    let contentModels = (data.models || []).filter(m => 
+                        m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent')
+                    );
+
+                    if (contentModels.length === 0) {
+                        contentModels = [
+                            { name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' },
+                            { name: 'models/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro' },
+                            { name: 'models/gemini-1.5-flash', displayName: 'Gemini 1.5 Flash' }
+                        ];
+                    }
+
+                    contentModels.forEach(m => {
+                        const opt = document.createElement('option');
+                        const modelId = m.name.replace(/^models\//, '');
+                        opt.value = modelId;
+                        opt.innerText = `${m.displayName || modelId} (${modelId})`;
+                        if (modelId.includes('2.5-flash') || modelId.includes('1.5-flash')) {
+                            opt.selected = true;
+                        }
+                        modelSelect.appendChild(opt);
+                    });
+
+                    modelSelect.disabled = false;
+                    statusEl.style.color = '#059669';
+                    statusEl.innerText = '✅ API認証成功！利用可能なAIモデルを選択できます。';
+                } else {
+                    const errData = await response.json().catch(() => ({}));
+                    const msg = errData.error?.message || `ステータスコード: ${response.status}`;
+                    statusEl.style.color = '#e11d48';
+                    statusEl.innerText = `❌ 認証失敗: ${msg}`;
+                    modelSelect.disabled = true;
+                    modelSelect.innerHTML = '<option value="">🔒 APIキー認証失敗</option>';
+                }
+            } catch (err) {
+                statusEl.style.color = '#e11d48';
+                statusEl.innerText = '❌ 通信エラー: ネットワーク接続をご確認ください。';
+                modelSelect.disabled = true;
+                modelSelect.innerHTML = '<option value="">🔒 通信エラー</option>';
+            }
+        }
+
+        function renderAiRoomChecklist() {
+            const listEl = document.getElementById('ai-room-checklist');
+            listEl.innerHTML = '';
+            
+            allChatRooms.forEach((room) => {
+                const roomKey = `${room.fileId}_${room.id}`;
+                const isCurrent = activeChat && activeChat.id === room.id && activeChat.fileId === room.fileId;
+                
+                const item = document.createElement('div');
+                item.className = 'ai-room-item';
+                item.dataset.roomName = room.name.toLowerCase();
+                item.dataset.roomLabel = room.displayLabel.toLowerCase();
+                
+                item.innerHTML = `
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; width:100%;">
+                        <input type="checkbox" class="ai-room-cb" value="${escapeHtml(roomKey)}" ${isCurrent ? 'checked' : ''}>
+                        <span style="font-weight:bold; color:#1e293b;">${escapeHtml(room.name)}</span>
+                        <span style="font-size:11px; color:#06c755; font-weight:bold; background:#e8f8ee; padding:1px 5px; border-radius:4px;">[${room.count}件]</span>
+                        <span style="font-size:10px; color:#64748b;">(${escapeHtml(room.displayLabel)})</span>
+                    </label>
+                `;
+                listEl.appendChild(item);
+            });
+            document.getElementById('ai-room-search-input').value = '';
+        }
+
+        function filterAiRoomChecklist(query) {
+            const q = query.toLowerCase().trim();
+            const items = document.querySelectorAll('.ai-room-item');
+            items.forEach(item => {
+                const name = item.dataset.roomName || '';
+                const label = item.dataset.roomLabel || '';
+                if (!q || name.includes(q) || label.includes(q)) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        function toggleFilteredAiRooms(checked) {
+            const items = document.querySelectorAll('.ai-room-item');
+            items.forEach(item => {
+                if (item.style.display !== 'none') {
+                    const cb = item.querySelector('.ai-room-cb');
+                    if (cb) cb.checked = checked;
+                }
+            });
+        }
+
+        function toggleAiRoomSelectVisibility() {
+            const scope = document.querySelector('input[name="ai-target-scope"]:checked')?.value;
+            const wrap = document.getElementById('ai-room-checklist-wrap');
+            wrap.style.display = (scope === 'multiple') ? 'block' : 'none';
+        }
+
+        function onAiPromptTypeChange(val) {
+            const customGroup = document.getElementById('ai-custom-question-group');
+            customGroup.style.display = (val === 'custom') ? 'block' : 'none';
+        }
+
+        async function buildConversationText() {
+            const scope = document.querySelector('input[name="ai-target-scope"]:checked')?.value || 'active';
+            const rangeType = document.getElementById('ai-range-type').value;
+
+            let targetRooms = [];
+            if (scope === 'active') {
+                if (activeChat) targetRooms.push(activeChat);
+                else if (allChatRooms.length > 0) targetRooms.push(allChatRooms[0]);
+            } else if (scope === 'all') {
+                targetRooms = [...allChatRooms];
+            } else if (scope === 'multiple') {
+                const checkedCbs = document.querySelectorAll('.ai-room-cb:checked');
+                checkedCbs.forEach(cb => {
+                    const key = cb.value;
+                    const room = allChatRooms.find(r => `${r.fileId}_${r.id}` === key);
+                    if (room) targetRooms.push(room);
+                });
+            }
+
+            if (targetRooms.length === 0) {
+                throw new Error('分析対象のトークルームが1つも選択されていません。');
+            }
+
+            setProgressBar(true, 'AI分析用に会話データを準備中...', 40, `${targetRooms.length}件のトーク部屋を取得中`);
+            await yieldToUI(20);
+
+            let allLines = [];
+            for (let i = 0; i < targetRooms.length; i++) {
+                const room = targetRooms[i];
+                let msgs = await getRawMessagesForChat(room);
+
+                if (rangeType === 'recent100') {
+                    msgs = msgs.slice(-100);
+                } else if (rangeType === 'recent300') {
+                    msgs = msgs.slice(-300);
+                }
+
+                allLines.push(`=== 【トークルーム名: ${room.name} (メッセージ件数: ${room.count}件 / ファイル: ${room.displayLabel})】 ===`);
+                msgs.forEach(m => {
+                    allLines.push(`[${m.fullDateTimeStr}] ${m.senderName}: ${m.text}`);
+                });
+                allLines.push('\n');
+            }
+
+            setProgressBar(false);
+            return {
+                text: allLines.join('\n'),
+                targetRooms
+            };
+        }
+
+        async function buildFullPrompt() {
+            const promptType = document.getElementById('ai-prompt-type').value;
+            const customQuestion = document.getElementById('ai-custom-question').value.trim();
+            const convData = await buildConversationText();
+
+            let systemHeader = 
+                "【システム指示: AI権限および動作モード】\n" +
+                "・あなたは提示されたすべてのLINE会話データに完全にフルアクセスできる高度な万能AIアナリストです。\n" +
+                "・データの検索・比較・要約・心理分析・統計・推測・特定キーワードの抽出など、どのような自由なリクエストや質問に対しても制約や制限なく、データを縦横無尽に参照して自由に回答してください。\n" +
+                "・文脈、送信日時、人物関係、発言頻度、潜在的な感情など、全データを多角的・網羅的に分析して最も役に立つ徹底的な回答を出力してください。\n\n";
+
+            let instruction = '';
+            if (promptType === 'summary') {
+                instruction = '以下のLINE会話データ全体を深く読み込み、要点を分かりやすく【全体概要】【主要トピック詳細】【重要な会話の流れ】に整理して詳細に要約してください。';
+            } else if (promptType === 'relationship') {
+                instruction = '以下のLINE会話データから、発言者同士の【雰囲気・親密度・感情の推移・客観的な関係性の特徴・潜在的な心理状態】をデータに基づき自由に詳しく分析してください。';
+            } else if (promptType === 'tasks') {
+                instruction = '以下のLINE会話データから、会話内で決定した、または話題に上がった【日時・場所・持ち物・約束事・TODOタスク・決定事項】を漏れなく全て抽出・整理してください。';
+            } else if (promptType === 'custom') {
+                if (customQuestion) {
+                    instruction = `以下のLINE会話データ全体にフルアクセスし、ユーザーからの次の質問・リクエストに制限なく自由かつ完璧に答えてください：\n【質問・リクエスト: ${customQuestion}】`;
+                } else {
+                    instruction = '以下のLINE会話データ全体を多角的に分析し、会話の特徴、主要な話題、興味深いポイントなどを自由に網羅して回答してください。';
+                }
+            }
+
+            return {
+                fullPrompt: `${systemHeader}【実行タスク指示】\n${instruction}\n\n=== 会話データ（フルアクセス可能対象）開始 ===\n${convData.text}\n=== 会話データ終了 ===`,
+                targetRooms: convData.targetRooms,
+                conversationText: convData.text
+            };
+        }
+
+        async function copyAiPromptToClipboard() {
+            try {
+                const promptObj = await buildFullPrompt();
+                navigator.clipboard.writeText(promptObj.fullPrompt).then(() => {
+                    alert('AI分析用プロンプト（フルアクセス仕様）をクリップボードにコピーしました！\nChatGPTやClaude、ブラウザ版Geminiにそのまま貼り付けて実行できます。');
+                }).catch(err => {
+                    alert('コピーに失敗しました: ' + err.message);
+                });
+            } catch (err) {
+                setProgressBar(false);
+                alert('エラー: ' + err.message);
+            }
         }
 
         async function runAiAnalysis() {
-            if (!apiConfig.apiKey) {
-                alert('最初に「API設定」ボタンからAPIキーを設定してください。');
-                toggleApiModal(true);
-                return;
-            }
-            if (messages.length === 0) {
-                alert('分析するトーク履歴ファイルを読み込んでください。');
+            const apiKey = document.getElementById('ai-api-key').value.trim();
+            if (!apiKey) {
+                alert('Google Gemini APIキーを入力してください。\n（APIキーをお持ちでない場合は「プロンプトをコピー」ボタンをご利用ください）');
                 return;
             }
 
-            const promptText = document.getElementById('aiPromptInput').value.trim();
-            if (!promptText) {
-                alert('指示内容を入力してください。');
+            const modelSelect = document.getElementById('ai-model-select');
+            const selectedModel = modelSelect.value || 'gemini-2.5-flash';
+
+            if (!selectedModel || modelSelect.disabled) {
+                alert('最初に「認証確認」ボタンを押してAPI認証を行い、AIモデルを選択してください。');
                 return;
             }
 
-            const analyzeBtn = document.getElementById('analyzeBtn');
-            const placeholder = document.getElementById('aiPlaceholder');
-            const resultEl = document.getElementById('aiResponse');
+            saveApiKey(apiKey);
 
-            analyzeBtn.disabled = true;
-            analyzeBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>分析中...`;
-
-            placeholder.classList.add('hidden');
-            resultEl.classList.remove('hidden');
-            resultEl.innerHTML = `<p class="text-slate-400 text-xs flex items-center"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>AIがトーク履歴を解析中です...</p>`;
-
-            // 直近のトークデータを文字列化（長過ぎる場合は制限）
-            const chatSample = messages.slice(-300).map(m => `[ID:${m.id}] ${m.date} ${m.time} ${m.sender}: ${m.text}`).join('\n');
-
-            const fullPrompt = `
-あなたは優れた会話データ分析AIです。以下のLINEトーク履歴を読み、ユーザーの質問・指示に答えてください。
-
-【重要指示】
-回答の中で特定のメッセージ内容に言及・引用・根拠とする場合は、必ずメッセージIDを [msg:数値] の形式で埋め込んでください。
-例：「[msg:15] で〇〇と述べているように...」
-ユーザーがこのボタンを押すことで該当メッセージまで直接ジャンプできるようにするため、このフォーマットを徹底してください。
-
-【トーク履歴】
-${chatSample}
-
-【ユーザーの指示】
-${promptText}
-`;
+            const resultContainer = document.getElementById('ai-result-container');
+            const resultBox = document.getElementById('ai-result-box');
+            
+            resultContainer.style.display = 'block';
+            resultBox.innerText = `🤖 モデル [${selectedModel}] が会話データにアクセスし、分析中... 少々お待ちください。`;
 
             try {
-                const responseText = await callAiApi(fullPrompt);
-                
-                // マークダウンレンダリング & [msg:ID] パターンをジャンプボタンへ置換
-                let htmlOutput = marked.parse(responseText);
+                const promptObj = await buildFullPrompt();
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
 
-                // 正規表現で [msg:123] や [msg: 123] をジャンプボタンに変換
-                htmlOutput = htmlOutput.replace(/\[msg:\s*(\d+)\]/g, (match, id) => {
-                    return `<button onclick="jumpToMessage(${id})" class="inline-flex items-center px-2 py-0.5 mx-0.5 text-xs font-semibold text-indigo-700 bg-indigo-100 hover:bg-indigo-200 border border-indigo-300 rounded transition cursor-pointer shadow-sm">
-                        <i class="fa-solid fa-location-arrow mr-1"></i>#${id}へ移動
-                    </button>`;
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{ text: promptObj.fullPrompt }]
+                        }]
+                    })
                 });
 
-                resultEl.innerHTML = htmlOutput;
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.error?.message || `APIエラー (${response.status})`);
+                }
+
+                const data = await response.json();
+                const aiResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (aiResponseText) {
+                    latestAiResultText = aiResponseText;
+                    resultBox.innerText = aiResponseText;
+
+                    // 自動的に履歴に保存
+                    saveAiHistoryRecord({
+                        id: 'ai_hist_' + Date.now(),
+                        timestamp: new Date().toLocaleString(),
+                        title: promptObj.targetRooms.map(r => r.name).join(', ') + ' の分析',
+                        model: selectedModel,
+                        resultText: aiResponseText,
+                        targetRooms: promptObj.targetRooms.map(r => ({ fileId: r.fileId, id: r.id, name: r.name })),
+                        conversationText: promptObj.conversationText
+                    });
+
+                } else {
+                    resultBox.innerText = '⚠️ AIからのレスポンスを解析できませんでした。';
+                }
 
             } catch (err) {
-                resultEl.innerHTML = `<div class="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs">
-                    <p class="font-bold">分析中にエラーが発生しました</p>
-                    <p>${escapeHtml(err.message)}</p>
-                </div>`;
-            } finally {
-                analyzeBtn.disabled = false;
-                analyzeBtn.innerHTML = `<i class="fa-solid fa-paper-plane mr-1.5"></i>実行`;
+                setProgressBar(false);
+                resultBox.innerText = '❌ 分析失敗: ' + err.message + '\n\nAPIキーが正しいか、選択したモデル・データ量をご確認ください。';
             }
         }
 
-        // -------------------------------------------------------------
-        // ユーティリティ関数
-        // -------------------------------------------------------------
-        function toggleBlur() {
-            isBlurMode = !isBlurMode;
-            document.body.classList.toggle('blur-mode', isBlurMode);
-            document.getElementById('blurBtn').classList.toggle('bg-amber-200', isBlurMode);
+        function downloadCurrentAiResult() {
+            if (!latestAiResultText) {
+                alert('ダウンロード可能な分析結果がありません。');
+                return;
+            }
+            const blob = new Blob([latestAiResultText], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `AI分析結果_${new Date().toISOString().slice(0,10)}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
         }
 
-        function filterMessages() {
-            const query = document.getElementById('searchInput').value.toLowerCase();
-            messages.forEach(m => {
-                const el = document.getElementById(`msg-${m.id}`);
-                if (el) {
-                    const match = m.text.toLowerCase().includes(query) || m.sender.toLowerCase().includes(query);
-                    el.style.display = match ? 'flex' : 'none';
+        /* --- 履歴管理ストレージ機能 --- */
+
+        function loadAiHistoryFromStorage() {
+            try {
+                const stored = localStorage.getItem('line_ai_analysis_history');
+                if (stored) {
+                    aiHistory = JSON.parse(stored);
                 }
+            } catch(e) { aiHistory = []; }
+            updateHistoryBadge();
+        }
+
+        function saveAiHistoryRecord(record) {
+            aiHistory.unshift(record);
+            if (aiHistory.length > 30) aiHistory.pop(); // 最大30件
+            try {
+                localStorage.setItem('line_ai_analysis_history', JSON.stringify(aiHistory));
+            } catch(e) {}
+            updateHistoryBadge();
+        }
+
+        function updateHistoryBadge() {
+            const countEl = document.getElementById('ai-history-count');
+            if (countEl) countEl.innerText = aiHistory.length;
+        }
+
+        function renderAiHistoryList() {
+            const container = document.getElementById('ai-history-list');
+            container.innerHTML = '';
+
+            if (aiHistory.length === 0) {
+                container.innerHTML = '<div style="padding:20px; text-align:center; color:#94a3b8; font-size:13px;">分析履歴はありません</div>';
+                return;
+            }
+
+            aiHistory.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'history-card';
+                card.innerHTML = `
+                    <div class="history-card-header">
+                        <span class="history-card-title">📝 ${escapeHtml(item.title)}</span>
+                        <span class="history-card-date">${escapeHtml(item.timestamp)}</span>
+                    </div>
+                    <div style="font-size:11px; color:#64748b; margin-bottom:6px;">使用モデル: <b>${escapeHtml(item.model)}</b></div>
+                    <div class="ai-result-box" style="max-height:100px; font-size:12px; margin-top:0;">${escapeHtml(item.resultText)}</div>
+                    <div class="history-card-actions">
+                        <button class="btn-small" onclick="jumpToChatFromHistory(${index})">💬 トークへ移動</button>
+                        <button class="btn-small" onclick="downloadHistoryResult(${index})">📄 TXT保存</button>
+                        <button class="btn-small" onclick="printHistoryResult(${index})">🖨️ 印刷</button>
+                        <button class="btn-small btn-danger" onclick="deleteHistoryRecord(${index})">🗑️ 削除</button>
+                    </div>
+                `;
+                container.appendChild(card);
             });
         }
 
-        function parseTimestamp(ts) {
-            if (!ts) return new Date();
-            let num = Number(ts);
-            if (isNaN(num)) return new Date(ts);
-            if (num > 1e14) return new Date((num / 1000000000 + 978307200) * 1000); // iOS Mac Nanos
-            if (num > 1e11) return new Date(num); // Unix Millis
-            if (num < 1000000000) return new Date((num + 978307200) * 1000); // iOS Cocoa Secs
-            return new Date(num * 1000);
+        function deleteHistoryRecord(index) {
+            if (confirm('この分析履歴を削除してもよろしいですか？')) {
+                aiHistory.splice(index, 1);
+                try {
+                    localStorage.setItem('line_ai_analysis_history', JSON.stringify(aiHistory));
+                } catch(e){}
+                renderAiHistoryList();
+                updateHistoryBadge();
+            }
         }
 
-        function formatDateHeader(d) {
-            if (!(d instanceof Date) || isNaN(d)) return '日時不明';
-            const days = ['日', '月', '火', '水', '木', '金', '土'];
-            return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`;
+        function jumpToChatFromHistory(index) {
+            const item = aiHistory[index];
+            if (item && item.targetRooms && item.targetRooms.length > 0) {
+                const target = item.targetRooms[0];
+                const roomObj = allChatRooms.find(r => r.fileId === target.fileId && r.id === target.id);
+                if (roomObj) {
+                    closeAiModal();
+                    activeChat = roomObj;
+                    loadMessagesOnDemand(roomObj);
+                    renderChatList(allChatRooms);
+                } else {
+                    alert('対象のトークルームが現在の読み込みデータ内に見つかりません。');
+                }
+            }
+        }
+
+        function downloadHistoryResult(index) {
+            const item = aiHistory[index];
+            if (!item) return;
+            const text = `【AI分析結果】\n日時: ${item.timestamp}\n対象: ${item.title}\nモデル: ${item.model}\n\n${item.resultText}\n\n=== 保存時の会話ログ ===\n${item.conversationText || ''}`;
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `AI分析履歴_${item.timestamp.replace(/[/:\s]/g, '_')}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function printHistoryResult(index) {
+            const item = aiHistory[index];
+            if (!item) return;
+            latestAiResultText = item.resultText;
+            closeAiModal();
+            openPrintModal();
+        }
+
+        /* --- ユーティリティ --- */
+
+        function parseTimestamp(ts) {
+            if (ts === null || ts === undefined || ts === '') return null;
+            
+            if (typeof ts === 'number') {
+                if (ts > 100000000 && ts < 2000000000) {
+                    if (ts < 1000000000) {
+                        return new Date((ts + 978307200) * 1000);
+                    }
+                    return new Date(ts * 1000);
+                }
+                if (ts > 1000000000000000) {
+                    if (ts > 1000000000000000000) {
+                        return new Date((ts / 1e9 + 978307200) * 1000);
+                    }
+                    return new Date(ts / 1000);
+                }
+                if (ts > 100000000000) {
+                    return new Date(ts);
+                }
+                return new Date(ts * 1000);
+            }
+
+            if (typeof ts === 'string') {
+                const cleanTs = ts.trim();
+                const num = Number(cleanTs);
+                if (!isNaN(num) && cleanTs !== '') {
+                    return parseTimestamp(num);
+                }
+                const parsedDate = new Date(cleanTs.replace(/-/g, '/'));
+                if (!isNaN(parsedDate.getTime())) {
+                    return parsedDate;
+                }
+            }
+            return null;
+        }
+
+        function formatDate(d) {
+            if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}/${m}/${day}`;
         }
 
         function formatTime(d) {
-            if (!(d instanceof Date) || isNaN(d)) return '';
-            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+            const h = String(d.getHours()).padStart(2, '0');
+            const m = String(d.getMinutes()).padStart(2, '0');
+            return `${h}:${m}`;
+        }
+
+        function formatDateHeader(d) {
+            if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+            const days = ['日', '月', '火', '水', '木', '金', '土'];
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            const day = d.getDate();
+            const dayOfWeek = days[d.getDay()];
+            return `${y}年${m}月${day}日(${dayOfWeek})`;
         }
 
         function escapeHtml(str) {
-            if (!str) return '';
+            if (str === null || str === undefined) return '';
             return String(str)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')

@@ -78,6 +78,11 @@
         .btn-small { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; transition: background 0.15s; }
         .btn-small:hover { background: #e2e8f0; }
         .btn-small:active { background: #cbd5e1; }
+        .btn-small.active { background: #6366f1; color: white; border-color: #4f46e5; }
+        
+        .btn-danger { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .btn-danger:hover { background: #fca5a5; }
+
         .btn-print { background: #06c755; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 4px; white-space: nowrap; transition: background 0.15s; }
         .btn-print:hover { background: #05b34c; }
 
@@ -192,10 +197,10 @@
 
         #status-bar { background: #1e293b; color: #f8fafc; font-size: 11px; padding: 6px 14px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 
-        #official-text-print-view { display: none; }
+        #official-text-print-view, #ai-print-only-container { display: none; }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
-        .modal-box { background: white; padding: 22px; border-radius: 14px; width: 90%; max-width: 580px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; }
+        .modal-box { background: white; padding: 22px; border-radius: 14px; width: 90%; max-width: 620px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; }
         .modal-title { font-size: 16px; font-weight: bold; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; color: #0f172a; }
         .option-group { margin-bottom: 16px; }
         .option-label { font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 6px; display: block; }
@@ -218,7 +223,7 @@
             word-break: break-word; 
             max-height: 280px; 
             overflow-y: auto; 
-            margin-top: 10px; 
+            margin-top: 8px; 
         }
         .ai-model-hint { font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.4; }
         .ai-model-hint a { color: #6366f1; text-decoration: none; font-weight: bold; }
@@ -242,13 +247,34 @@
         }
         .ai-room-item:last-child { border-bottom: none; }
 
+        /* 履歴カード用スタイル */
+        .history-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+        }
+        .history-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+        }
+        .history-card-title { font-weight: bold; font-size: 13px; color: #1e293b; }
+        .history-card-date { font-size: 11px; color: #94a3b8; }
+        .history-card-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+
         @media print {
             @page { margin: 12mm; }
             
             header, #sidebar, .chat-header-actions, .btn-back, #status-bar, 
             .modal-overlay, #progress-overlay, #drop-zone, .msg-tools, 
             .search-results-dropdown, .msg-select-check, .btn-ai, 
-            #ai-modal, #ai-result-container, .ai-result-box {
+            #ai-modal {
                 display: none !important;
             }
 
@@ -269,6 +295,29 @@
             .bubble {
                 box-shadow: none !important;
                 border: 1px solid #ddd !important;
+            }
+
+            /* AI印刷時の専用レイアウト制御 */
+            body.print-hide-chat #messages-container,
+            body.print-hide-chat #chat-header,
+            body.print-hide-chat #official-text-print-view {
+                display: none !important;
+            }
+
+            #ai-print-only-container {
+                display: none;
+            }
+            body.print-show-ai #ai-print-only-container {
+                display: block !important;
+                font-family: sans-serif;
+                font-size: 13px;
+                line-height: 1.6;
+                color: #000;
+                margin-bottom: 20px;
+                padding: 14px;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                background: #f8fafc;
             }
 
             body.print-hide-header #chat-header { display: none !important; }
@@ -396,12 +445,14 @@
             </div>
             <div id="chat-view">
                 <div id="empty-state">左のリストから対象のトークを選択してください</div>
+                <div id="ai-print-only-container"></div>
                 <div id="messages-container"></div>
                 <div id="official-text-print-view"></div>
             </div>
         </div>
     </div>
 
+    <!-- 印刷設定モーダル -->
     <div id="print-modal" class="modal-overlay">
         <div class="modal-box">
             <div class="modal-title">
@@ -409,6 +460,15 @@
                 <span style="cursor:pointer;" onclick="closePrintModal()">✕</span>
             </div>
             <div class="option-group">
+                <span class="option-label">印刷対象のコンテンツ</span>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="print-opt-include-chat" checked> 💬 トーク内容（メッセージ）を印刷する
+                </label>
+                <label class="checkbox-label" id="print-opt-include-ai-wrap" style="display:none;">
+                    <input type="checkbox" id="print-opt-include-ai" checked> 🤖 直近のAI分析結果も印刷に含める
+                </label>
+            </div>
+            <div class="option-group" id="print-scope-group">
                 <span class="option-label">印刷対象メッセージの範囲</span>
                 <label class="checkbox-label">
                     <input type="radio" name="print-scope" id="print-opt-scope-all" checked onchange="updatePrintModalState()"> すべてのメッセージを印刷
@@ -454,88 +514,109 @@
         </div>
     </div>
 
+    <!-- AIモーダル -->
     <div id="ai-modal" class="modal-overlay">
         <div class="modal-box">
             <div class="modal-title">
-                <span>🤖 AI トークルーム分析</span>
+                <span>🤖 AI トーク分析 & 履歴</span>
                 <span style="cursor:pointer;" onclick="closeAiModal()">✕</span>
             </div>
 
-            <div class="option-group">
-                <span class="option-label">🔑 Google Gemini API キー</span>
-                <div style="display:flex; gap:6px;">
-                    <input type="password" id="ai-api-key" class="styled-input" placeholder="AIStudioで取得したAPIキーを入力..." oninput="saveApiKey(this.value)" onchange="saveApiKey(this.value)">
-                    <button class="btn-small" onclick="checkApiKeyAuth()" style="white-space:nowrap; background:#e0e7ff; color:#3730a3; border-color:#c7d2fe; font-weight:bold;">🔌 認証確認</button>
-                </div>
-                <div id="ai-auth-status" style="font-size:11px; margin-top:5px; font-weight:bold; min-height:16px;"></div>
-                <div class="ai-model-hint">
-                    ※一度入力すれば次回以降も自動保存されます。<br>
-                    キーをお持ちでない方は <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio (無料)</a> で取得するか、「プロンプトをコピー」をご利用ください。
-                </div>
+            <!-- タブ切り替えボタン -->
+            <div style="display:flex; gap:8px; margin-bottom:14px; border-bottom:2px solid #edf2f7; padding-bottom:8px;">
+                <button id="ai-tab-btn-run" class="btn-small active" onclick="switchAiTab('run')">✨ AI分析実行</button>
+                <button id="ai-tab-btn-history" class="btn-small" onclick="switchAiTab('history')">📜 分析履歴 (<span id="ai-history-count">0</span>)</button>
             </div>
 
-            <div class="option-group">
-                <span class="option-label">🤖 使用するAIモデル</span>
-                <select id="ai-model-select" class="styled-select" disabled>
-                    <option value="">🔒 APIキー認証確認後に選択可能になります</option>
-                </select>
-            </div>
-            
-            <div class="option-group">
-                <span class="option-label">💬 分析対象のトークルーム</span>
-                <label class="checkbox-label">
-                    <input type="radio" name="ai-target-scope" value="active" checked onchange="toggleAiRoomSelectVisibility()"> 現在開いているトークルームのみ
-                </label>
-                <label class="checkbox-label">
-                    <input type="radio" name="ai-target-scope" value="multiple" onchange="toggleAiRoomSelectVisibility()"> 複数のトークルームを検索して選択
-                </label>
-                <label class="checkbox-label">
-                    <input type="radio" name="ai-target-scope" value="all" onchange="toggleAiRoomSelectVisibility()"> すべてのトークルーム一括
-                </label>
-
-                <div id="ai-room-checklist-wrap" style="display:none; margin-top:8px;">
-                    <div class="ai-search-tools">
-                        <input type="text" id="ai-room-search-input" class="styled-input" placeholder="🔍 トーク部屋を検索..." oninput="filterAiRoomChecklist(this.value)">
-                        <button class="btn-small" onclick="toggleFilteredAiRooms(true)">全選択</button>
-                        <button class="btn-small" onclick="toggleFilteredAiRooms(false)">全解除</button>
+            <!-- AI分析実行タブ -->
+            <div id="ai-tab-run-content">
+                <div class="option-group">
+                    <span class="option-label">🔑 Google Gemini API キー</span>
+                    <div style="display:flex; gap:6px;">
+                        <input type="password" id="ai-api-key" class="styled-input" placeholder="AIStudioで取得したAPIキーを入力..." oninput="saveApiKey(this.value)" onchange="saveApiKey(this.value)">
+                        <button class="btn-small" onclick="checkApiKeyAuth()" style="white-space:nowrap; background:#e0e7ff; color:#3730a3; border-color:#c7d2fe; font-weight:bold;">🔌 認証確認</button>
                     </div>
-                    <div id="ai-room-checklist"></div>
+                    <div id="ai-auth-status" style="font-size:11px; margin-top:5px; font-weight:bold; min-height:16px;"></div>
+                    <div class="ai-model-hint">
+                        ※一度入力すれば次回以降も自動保存されます。<br>
+                        キーをお持ちでない方は <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio (無料)</a> で取得するか、「プロンプトをコピー」をご利用ください。
+                    </div>
+                </div>
+
+                <div class="option-group">
+                    <span class="option-label">🤖 使用するAIモデル</span>
+                    <select id="ai-model-select" class="styled-select" disabled>
+                        <option value="">🔒 APIキー認証確認後に選択可能になります</option>
+                    </select>
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">💬 分析対象のトークルーム</span>
+                    <label class="checkbox-label">
+                        <input type="radio" name="ai-target-scope" value="active" checked onchange="toggleAiRoomSelectVisibility()"> 現在開いているトークルームのみ
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="radio" name="ai-target-scope" value="multiple" onchange="toggleAiRoomSelectVisibility()"> 複数のトークルームを検索して選択
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="radio" name="ai-target-scope" value="all" onchange="toggleAiRoomSelectVisibility()"> すべてのトークルーム一括
+                    </label>
+
+                    <div id="ai-room-checklist-wrap" style="display:none; margin-top:8px;">
+                        <div class="ai-search-tools">
+                            <input type="text" id="ai-room-search-input" class="styled-input" placeholder="🔍 トーク部屋を検索..." oninput="filterAiRoomChecklist(this.value)">
+                            <button class="btn-small" onclick="toggleFilteredAiRooms(true)">全選択</button>
+                            <button class="btn-small" onclick="toggleFilteredAiRooms(false)">全解除</button>
+                        </div>
+                        <div id="ai-room-checklist"></div>
+                    </div>
+                </div>
+
+                <div class="option-group">
+                    <span class="option-label">📊 分析タイプ</span>
+                    <select id="ai-prompt-type" class="styled-select" onchange="onAiPromptTypeChange(this.value)">
+                        <option value="summary">📝 全体の要約・重要トピック抽出</option>
+                        <option value="relationship">❤️ 感情・関係性・親密度分析</option>
+                        <option value="tasks">📌 決定事項・約束・タスク箇条書き抽出</option>
+                        <option value="custom">💬 自由質問（制限なしでどんな質問にも回答）</option>
+                    </select>
+                </div>
+
+                <div class="option-group" id="ai-custom-question-group" style="display:none;">
+                    <span class="option-label">❓ AIへの質問・指示</span>
+                    <input type="text" id="ai-custom-question" class="styled-input" placeholder="例: 主な会話の話題、特定の単語の検索、二人の関係の変化など自由に入力">
+                </div>
+
+                <div class="option-group">
+                    <span class="option-label">📏 各トークの取得件数範囲</span>
+                    <select id="ai-range-type" class="styled-select">
+                        <option value="recent100">各トーク直近 100 件のメッセージ</option>
+                        <option value="recent300">各トーク直近 300 件のメッセージ</option>
+                        <option value="all">各トークすべてのメッセージ (完全フルデータ)</option>
+                    </select>
+                </div>
+
+                <div class="modal-btns">
+                    <button class="btn-cancel" onclick="closeAiModal()">閉じる</button>
+                    <button class="btn-small" onclick="copyAiPromptToClipboard()">📋 プロンプトをコピー</button>
+                    <button class="btn-ai" onclick="runAiAnalysis()">✨ AIで分析実行</button>
+                </div>
+
+                <div id="ai-result-container" style="display:none; margin-top:15px; border-top:1px dashed #cbd5e1; padding-top:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="option-label" style="margin:0;">💡 AI分析結果</span>
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn-small" onclick="downloadCurrentAiResult()">📄 TXT保存</button>
+                            <button class="btn-small" onclick="openPrintModalWithAi(latestAiResultText)">🖨️ 印刷</button>
+                        </div>
+                    </div>
+                    <div id="ai-result-box" class="ai-result-box">分析準備中...</div>
                 </div>
             </div>
 
-            <div class="option-group">
-                <span class="option-label">📊 分析タイプ</span>
-                <select id="ai-prompt-type" class="styled-select" onchange="onAiPromptTypeChange(this.value)">
-                    <option value="summary">📝 全体の要約・重要トピック抽出</option>
-                    <option value="relationship">❤️ 感情・関係性・親密度分析</option>
-                    <option value="tasks">📌 決定事項・約束・タスク箇条書き抽出</option>
-                    <option value="custom">💬 自由質問（制限なしでどんな質問にも回答）</option>
-                </select>
-            </div>
-
-            <div class="option-group" id="ai-custom-question-group" style="display:none;">
-                <span class="option-label">❓ AIへの質問・指示</span>
-                <input type="text" id="ai-custom-question" class="styled-input" placeholder="例: 主な会話の話題、特定の単語の検索、二人の関係の変化など自由に入力">
-            </div>
-
-            <div class="option-group">
-                <span class="option-label">📏 各トークの取得件数範囲</span>
-                <select id="ai-range-type" class="styled-select">
-                    <option value="recent100">各トーク直近 100 件のメッセージ</option>
-                    <option value="recent300">各トーク直近 300 件のメッセージ</option>
-                    <option value="all">各トークすべてのメッセージ (完全フルデータ)</option>
-                </select>
-            </div>
-
-            <div class="modal-btns">
-                <button class="btn-cancel" onclick="closeAiModal()">閉じる</button>
-                <button class="btn-small" onclick="copyAiPromptToClipboard()">📋 プロンプトをコピー</button>
-                <button class="btn-ai" onclick="runAiAnalysis()">✨ AIで分析実行</button>
-            </div>
-
-            <div id="ai-result-container" style="display:none;">
-                <span class="option-label" style="margin-top:16px;">💡 AI分析結果</span>
-                <div id="ai-result-box" class="ai-result-box">分析準備中...</div>
+            <!-- 分析履歴タブ -->
+            <div id="ai-tab-history-content" style="display:none;">
+                <div id="ai-history-list" style="max-height:480px; overflow-y:auto;"></div>
             </div>
         </div>
     </div>
@@ -553,6 +634,9 @@
         let globalUserMap = {};
         let globalChatMap = {};
 
+        let latestAiResultText = '';
+        let aiHistory = [];
+
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 updateStatus('SQL.js Engine 初期化中...');
@@ -564,6 +648,8 @@
                 if (savedKey) {
                     document.getElementById('ai-api-key').value = savedKey;
                 }
+
+                loadAiHistoryFromStorage();
 
             } catch (err) {
                 updateStatus('初期化完了（.txt解析のみ対応可能）');
@@ -1395,13 +1481,30 @@
             if (box && !box.contains(e.target) && dropdown) dropdown.style.display = 'none';
         });
 
+        /* --- 印刷機能エリア --- */
+
         function openPrintModal() {
             if (!activeChat) {
                 alert('印刷対象のトークを選択してください。');
                 return;
             }
             updateSelectedCount();
+            
+            const aiWrap = document.getElementById('print-opt-include-ai-wrap');
+            if (latestAiResultText) {
+                aiWrap.style.display = 'flex';
+                document.getElementById('print-opt-include-ai').checked = true;
+            } else {
+                aiWrap.style.display = 'none';
+                document.getElementById('print-opt-include-ai').checked = false;
+            }
+
             document.getElementById('print-modal').style.display = 'flex';
+        }
+
+        function openPrintModalWithAi(aiText) {
+            latestAiResultText = aiText;
+            openPrintModal();
         }
 
         function closePrintModal() {
@@ -1413,6 +1516,8 @@
         }
 
         function executePrint() {
+            const optIncludeChat = document.getElementById('print-opt-include-chat').checked;
+            const optIncludeAi = document.getElementById('print-opt-include-ai').checked;
             const optScopeSelected = document.getElementById('print-opt-scope-selected').checked;
             const optTextMode = document.getElementById('print-opt-text-mode').checked;
             const optHeader = document.getElementById('print-opt-header').checked;
@@ -1421,8 +1526,13 @@
             const optHideMasked = document.getElementById('print-opt-hide-masked').checked;
             const optBg = document.getElementById('print-opt-bg').checked;
 
+            if (!optIncludeChat && !optIncludeAi) {
+                alert('印刷対象（トーク内容 または AI分析結果）のいずれかを有効にしてください。');
+                return;
+            }
+
             const selectedRows = document.querySelectorAll('.msg-row .msg-select-check:checked');
-            if (optScopeSelected && selectedRows.length === 0) {
+            if (optIncludeChat && optScopeSelected && selectedRows.length === 0) {
                 alert('印刷するメッセージが選択されていません。\nメッセージ横のチェックボックス（☑）を選択してください。');
                 return;
             }
@@ -1444,7 +1554,15 @@
                 else div.classList.remove('has-selected-msg');
             });
 
-            if (optTextMode) {
+            // AI分析結果の印刷領域を準備
+            const aiContainer = document.getElementById('ai-print-only-container');
+            if (optIncludeAi && latestAiResultText) {
+                aiContainer.innerHTML = `<b>🤖 【AI分析結果】</b><br><br>${escapeHtml(latestAiResultText).replace(/\n/g, '<br>')}`;
+            } else {
+                aiContainer.innerHTML = '';
+            }
+
+            if (optTextMode && optIncludeChat) {
                 const textPrintContainer = document.getElementById('official-text-print-view');
                 const now = new Date();
                 const nowStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${formatTime(now)}`;
@@ -1487,9 +1605,14 @@
             body.classList.toggle('print-hide-masked', optHideMasked);
             body.classList.toggle('print-keep-bg', optBg && !optTextMode);
 
+            body.classList.toggle('print-hide-chat', !optIncludeChat);
+            body.classList.toggle('print-show-ai', optIncludeAi && Boolean(latestAiResultText));
+
             closePrintModal();
             window.print();
         }
+
+        /* --- AI分析 & 履歴管理エリア --- */
 
         function openAiModal() {
             if (allChatRooms.length === 0) {
@@ -1497,6 +1620,7 @@
                 return;
             }
             renderAiRoomChecklist();
+            renderAiHistoryList();
             document.getElementById('ai-modal').style.display = 'flex';
             
             const savedKey = document.getElementById('ai-api-key').value.trim();
@@ -1507,6 +1631,26 @@
 
         function closeAiModal() {
             document.getElementById('ai-modal').style.display = 'none';
+        }
+
+        function switchAiTab(tab) {
+            const runContent = document.getElementById('ai-tab-run-content');
+            const historyContent = document.getElementById('ai-tab-history-content');
+            const btnRun = document.getElementById('ai-tab-btn-run');
+            const btnHistory = document.getElementById('ai-tab-btn-history');
+
+            if (tab === 'run') {
+                runContent.style.display = 'block';
+                historyContent.style.display = 'none';
+                btnRun.classList.add('active');
+                btnHistory.classList.remove('active');
+            } else {
+                runContent.style.display = 'none';
+                historyContent.style.display = 'block';
+                btnRun.classList.remove('active');
+                btnHistory.classList.add('active');
+                renderAiHistoryList();
+            }
         }
 
         function saveApiKey(key) {
@@ -1685,13 +1829,16 @@
             }
 
             setProgressBar(false);
-            return allLines.join('\n');
+            return {
+                text: allLines.join('\n'),
+                targetRooms
+            };
         }
 
         async function buildFullPrompt() {
             const promptType = document.getElementById('ai-prompt-type').value;
             const customQuestion = document.getElementById('ai-custom-question').value.trim();
-            const conversationText = await buildConversationText();
+            const convData = await buildConversationText();
 
             let systemHeader = 
                 "【システム指示: AI権限および動作モード】\n" +
@@ -1714,13 +1861,17 @@
                 }
             }
 
-            return `${systemHeader}【実行タスク指示】\n${instruction}\n\n=== 会話データ（フルアクセス可能対象）開始 ===\n${conversationText}\n=== 会話データ終了 ===`;
+            return {
+                fullPrompt: `${systemHeader}【実行タスク指示】\n${instruction}\n\n=== 会話データ（フルアクセス可能対象）開始 ===\n${convData.text}\n=== 会話データ終了 ===`,
+                targetRooms: convData.targetRooms,
+                conversationText: convData.text
+            };
         }
 
         async function copyAiPromptToClipboard() {
             try {
-                const prompt = await buildFullPrompt();
-                navigator.clipboard.writeText(prompt).then(() => {
+                const promptObj = await buildFullPrompt();
+                navigator.clipboard.writeText(promptObj.fullPrompt).then(() => {
                     alert('AI分析用プロンプト（フルアクセス仕様）をクリップボードにコピーしました！\nChatGPTやClaude、ブラウザ版Geminiにそのまま貼り付けて実行できます。');
                 }).catch(err => {
                     alert('コピーに失敗しました: ' + err.message);
@@ -1755,8 +1906,7 @@
             resultBox.innerText = `🤖 モデル [${selectedModel}] が会話データにアクセスし、分析中... 少々お待ちください。`;
 
             try {
-                const prompt = await buildFullPrompt();
-
+                const promptObj = await buildFullPrompt();
                 const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
 
                 const response = await fetch(endpoint, {
@@ -1764,7 +1914,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{
-                            parts: [{ text: prompt }]
+                            parts: [{ text: promptObj.fullPrompt }]
                         }]
                     })
                 });
@@ -1778,7 +1928,20 @@
                 const aiResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
                 if (aiResponseText) {
+                    latestAiResultText = aiResponseText;
                     resultBox.innerText = aiResponseText;
+
+                    // 自動的に履歴に保存
+                    saveAiHistoryRecord({
+                        id: 'ai_hist_' + Date.now(),
+                        timestamp: new Date().toLocaleString(),
+                        title: promptObj.targetRooms.map(r => r.name).join(', ') + ' の分析',
+                        model: selectedModel,
+                        resultText: aiResponseText,
+                        targetRooms: promptObj.targetRooms.map(r => ({ fileId: r.fileId, id: r.id, name: r.name })),
+                        conversationText: promptObj.conversationText
+                    });
+
                 } else {
                     resultBox.innerText = '⚠️ AIからのレスポンスを解析できませんでした。';
                 }
@@ -1788,6 +1951,126 @@
                 resultBox.innerText = '❌ 分析失敗: ' + err.message + '\n\nAPIキーが正しいか、選択したモデル・データ量をご確認ください。';
             }
         }
+
+        function downloadCurrentAiResult() {
+            if (!latestAiResultText) {
+                alert('ダウンロード可能な分析結果がありません。');
+                return;
+            }
+            const blob = new Blob([latestAiResultText], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `AI分析結果_${new Date().toISOString().slice(0,10)}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        /* --- 履歴管理ストレージ機能 --- */
+
+        function loadAiHistoryFromStorage() {
+            try {
+                const stored = localStorage.getItem('line_ai_analysis_history');
+                if (stored) {
+                    aiHistory = JSON.parse(stored);
+                }
+            } catch(e) { aiHistory = []; }
+            updateHistoryBadge();
+        }
+
+        function saveAiHistoryRecord(record) {
+            aiHistory.unshift(record);
+            if (aiHistory.length > 30) aiHistory.pop(); // 最大30件
+            try {
+                localStorage.setItem('line_ai_analysis_history', JSON.stringify(aiHistory));
+            } catch(e) {}
+            updateHistoryBadge();
+        }
+
+        function updateHistoryBadge() {
+            const countEl = document.getElementById('ai-history-count');
+            if (countEl) countEl.innerText = aiHistory.length;
+        }
+
+        function renderAiHistoryList() {
+            const container = document.getElementById('ai-history-list');
+            container.innerHTML = '';
+
+            if (aiHistory.length === 0) {
+                container.innerHTML = '<div style="padding:20px; text-align:center; color:#94a3b8; font-size:13px;">分析履歴はありません</div>';
+                return;
+            }
+
+            aiHistory.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'history-card';
+                card.innerHTML = `
+                    <div class="history-card-header">
+                        <span class="history-card-title">📝 ${escapeHtml(item.title)}</span>
+                        <span class="history-card-date">${escapeHtml(item.timestamp)}</span>
+                    </div>
+                    <div style="font-size:11px; color:#64748b; margin-bottom:6px;">使用モデル: <b>${escapeHtml(item.model)}</b></div>
+                    <div class="ai-result-box" style="max-height:100px; font-size:12px; margin-top:0;">${escapeHtml(item.resultText)}</div>
+                    <div class="history-card-actions">
+                        <button class="btn-small" onclick="jumpToChatFromHistory(${index})">💬 トークへ移動</button>
+                        <button class="btn-small" onclick="downloadHistoryResult(${index})">📄 TXT保存</button>
+                        <button class="btn-small" onclick="printHistoryResult(${index})">🖨️ 印刷</button>
+                        <button class="btn-small btn-danger" onclick="deleteHistoryRecord(${index})">🗑️ 削除</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function deleteHistoryRecord(index) {
+            if (confirm('この分析履歴を削除してもよろしいですか？')) {
+                aiHistory.splice(index, 1);
+                try {
+                    localStorage.setItem('line_ai_analysis_history', JSON.stringify(aiHistory));
+                } catch(e){}
+                renderAiHistoryList();
+                updateHistoryBadge();
+            }
+        }
+
+        function jumpToChatFromHistory(index) {
+            const item = aiHistory[index];
+            if (item && item.targetRooms && item.targetRooms.length > 0) {
+                const target = item.targetRooms[0];
+                const roomObj = allChatRooms.find(r => r.fileId === target.fileId && r.id === target.id);
+                if (roomObj) {
+                    closeAiModal();
+                    activeChat = roomObj;
+                    loadMessagesOnDemand(roomObj);
+                    renderChatList(allChatRooms);
+                } else {
+                    alert('対象のトークルームが現在の読み込みデータ内に見つかりません。');
+                }
+            }
+        }
+
+        function downloadHistoryResult(index) {
+            const item = aiHistory[index];
+            if (!item) return;
+            const text = `【AI分析結果】\n日時: ${item.timestamp}\n対象: ${item.title}\nモデル: ${item.model}\n\n${item.resultText}\n\n=== 保存時の会話ログ ===\n${item.conversationText || ''}`;
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `AI分析履歴_${item.timestamp.replace(/[/:\s]/g, '_')}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function printHistoryResult(index) {
+            const item = aiHistory[index];
+            if (!item) return;
+            latestAiResultText = item.resultText;
+            closeAiModal();
+            openPrintModal();
+        }
+
+        /* --- ユーティリティ --- */
 
         function parseTimestamp(ts) {
             if (ts === null || ts === undefined || ts === '') return null;

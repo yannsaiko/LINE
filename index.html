@@ -2,558 +2,901 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>メッセージデータ統合解析ビューアー</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LINE トーク履歴マルチビューア & AI分析</title>
     <style>
-        :root {
-            --bg-color: #f1f5f9;
-            --card-bg: #ffffff;
-            --text-main: #0f172a;
-            --text-sub: #64748b;
-            --primary: #3b82f6;
-            --primary-light: #eff6ff;
-            --border-color: #e2e8f0;
-            --radius: 12px;
-            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif; 
+            height: 100vh; 
+            height: -webkit-fill-available; 
+            display: flex; 
+            flex-direction: column; 
+            background: #f5f5f5; 
+            color: #333; 
+            overflow: hidden; 
         }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        html { height: -webkit-fill-available; }
+        
+        header { 
+            background: #06c755; 
+            color: white; 
+            padding: 10px 16px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+            flex-shrink: 0; 
+            z-index: 100; 
+            min-height: 50px; 
         }
-
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            padding: 24px;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        header {
-            margin-bottom: 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        h1 {
-            font-size: 1.5rem;
-            font-weight: 700;
-        }
-
-        /* ファイルドロップエリア */
-        .drop-zone {
-            background: var(--card-bg);
-            border: 2px dashed var(--border-color);
-            border-radius: var(--radius);
-            padding: 32px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-bottom: 24px;
-        }
-
-        .drop-zone:hover, .drop-zone.dragover {
-            border-color: var(--primary);
-            background: var(--primary-light);
-        }
-
-        .btn {
-            background: var(--primary);
-            color: white;
+        header h1 { font-size: 16px; font-weight: bold; letter-spacing: -0.3px; }
+        
+        .header-btns { display: flex; gap: 8px; align-items: center; }
+        
+        button, label.btn {
+            background: white;
+            color: #06c755;
             border: none;
-            padding: 8px 16px;
+            padding: 6px 12px;
             border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
             cursor: pointer;
-            font-weight: 600;
-            transition: opacity 0.2s;
-        }
-
-        .btn:hover {
-            opacity: 0.9;
-        }
-
-        .btn-outline {
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-main);
-        }
-
-        /* ダッシュボードグリッド */
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .card {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            padding: 20px;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border-color);
-        }
-
-        .card-title {
-            font-size: 0.875rem;
-            color: var(--text-sub);
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-
-        .card-value {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: var(--text-main);
-        }
-
-        .card-subtext {
-            font-size: 0.75rem;
-            color: var(--text-sub);
-            margin-top: 4px;
-        }
-
-        /* グラフ＆詳細エリア */
-        .analytics-section {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        @media (max-width: 768px) {
-            .analytics-section {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* 時間帯アクティビティバー */
-        .chart-container {
-            display: flex;
-            align-items: flex-end;
-            gap: 2px;
-            height: 120px;
-            padding-top: 16px;
-        }
-
-        .bar-wrapper {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
+            transition: background 0.2s, opacity 0.2s;
+            display: inline-flex;
             align-items: center;
-            height: 100%;
-            justify-content: flex-end;
-        }
-
-        .bar {
-            width: 100%;
-            background: var(--primary);
-            border-radius: 2px 2px 0 0;
-            min-height: 2px;
-            transition: height 0.3s;
-        }
-
-        .bar-label {
-            font-size: 0.625rem;
-            color: var(--text-sub);
-            margin-top: 4px;
-        }
-
-        /* 送信者ランキングリスト */
-        .sender-list {
-            list-style: none;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .sender-item {
-            display: flex;
-            flex-direction: column;
             gap: 4px;
         }
+        button:hover, label.btn:hover { opacity: 0.9; }
+        .btn-primary { background: #00b900; color: white; }
+        .btn-secondary { background: #e2e8f0; color: #334155; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-small { padding: 4px 8px; font-size: 12px; }
 
-        .sender-info {
+        .app-container {
             display: flex;
-            justify-content: space-between;
-            font-size: 0.875rem;
-        }
-
-        .progress-bar-bg {
-            background: var(--bg-color);
-            height: 8px;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
-        .progress-bar-fill {
-            background: var(--primary);
-            height: 100%;
-            border-radius: 4px;
-        }
-
-        /* フィルター＆検索 */
-        .filter-bar {
-            background: var(--card-bg);
-            padding: 16px;
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            margin-bottom: 24px;
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .filter-bar input, .filter-bar select {
-            padding: 8px 12px;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            outline: none;
-            font-size: 0.875rem;
-        }
-
-        .filter-bar input[type="search"] {
             flex: 1;
-            min-width: 200px;
-        }
-
-        /* タイムライン表示 */
-        .chat-container {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            padding: 24px;
-            box-shadow: var(--shadow);
-            max-height: 600px;
-            overflow-y: auto;
-        }
-
-        .date-divider {
-            text-align: center;
-            margin: 20px 0 12px;
+            overflow: hidden;
             position: relative;
         }
 
-        .date-divider::before {
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 50%;
-            width: 100%;
-            height: 1px;
-            background: var(--border-color);
-            z-index: 1;
-        }
-
-        .date-label {
-            position: relative;
-            z-index: 2;
-            background: var(--card-bg);
-            padding: 0 12px;
-            font-size: 0.75rem;
-            color: var(--text-sub);
-            font-weight: 600;
-        }
-
-        .msg-bubble {
-            margin-bottom: 12px;
+        /* サイドバー */
+        .sidebar {
+            width: 280px;
+            background: #ffffff;
+            border-right: 1px solid #e2e8f0;
             display: flex;
             flex-direction: column;
-            max-width: 80%;
+            flex-shrink: 0;
+            transition: transform 0.3s ease;
         }
-
-        .msg-header {
+        .sidebar-header {
+            padding: 12px;
+            border-bottom: 1px solid #f1f5f9;
+            font-weight: bold;
+            font-size: 14px;
             display: flex;
-            gap: 8px;
-            align-items: baseline;
-            margin-bottom: 2px;
+            justify-content: space-between;
+            align-items: center;
+            background: #fafafa;
+        }
+        .room-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .room-item {
+            padding: 12px;
+            border-bottom: 1px solid #f8fafc;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.15s;
+        }
+        .room-item:hover, .room-item.active {
+            background: #f0fdf4;
+        }
+        .room-item.active {
+            border-left: 4px solid #06c755;
+        }
+        .room-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1e293b;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 180px;
+        }
+        .room-count {
+            font-size: 11px;
+            color: #64748b;
+            background: #e2e8f0;
+            padding: 2px 6px;
+            border-radius: 10px;
         }
 
+        /* メインビュー */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #7494c0;
+            position: relative;
+        }
+        .chat-header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 16px;
+            border-bottom: 1px solid #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: bold;
+            font-size: 15px;
+            gap: 10px;
+        }
+        .search-bar {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            background: #f1f5f9;
+            padding: 4px 8px;
+            border-radius: 6px;
+            flex: 1;
+            max-width: 320px;
+        }
+        .search-bar input {
+            border: none;
+            background: transparent;
+            font-size: 12px;
+            outline: none;
+            width: 100%;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .date-divider {
+            text-align: center;
+            margin: 12px 0;
+        }
+        .date-divider span {
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            font-size: 11px;
+            padding: 3px 10px;
+            border-radius: 12px;
+        }
+        .msg-row {
+            display: flex;
+            flex-direction: column;
+            max-width: 70%;
+        }
+        .msg-row.other { align-self: flex-start; }
+        .msg-row.me { align-self: flex-end; align-items: flex-end; }
         .msg-sender {
-            font-size: 0.8rem;
-            font-weight: 700;
-            color: var(--text-main);
+            font-size: 11px;
+            color: #ffffff;
+            margin-bottom: 3px;
+            margin-left: 2px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
-
-        .msg-time {
-            font-size: 0.7rem;
-            color: var(--text-sub);
+        .msg-bubble-wrap {
+            display: flex;
+            align-items: flex-end;
+            gap: 6px;
         }
-
-        .msg-content {
-            background: var(--bg-color);
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-size: 0.9rem;
+        .msg-row.me .msg-bubble-wrap { flex-direction: row-reverse; }
+        .msg-bubble {
+            padding: 8px 12px;
+            border-radius: 14px;
+            font-size: 14px;
             line-height: 1.4;
             word-break: break-word;
+            white-space: pre-wrap;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .msg-row.other .msg-bubble {
+            background: white;
+            color: #1e293b;
+            border-top-left-radius: 2px;
+        }
+        .msg-row.me .msg-bubble {
+            background: #85e249;
+            color: #0f172a;
+            border-top-right-radius: 2px;
+        }
+        .msg-time {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.9);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            white-space: nowrap;
         }
 
-        .hidden { display: none; }
+        /* モーダル */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 200;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-body {
+            background: white;
+            width: 90%;
+            max-width: 820px;
+            max-height: 90vh;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            padding: 14px 20px;
+            background: #06c755;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+        }
+        .modal-tabs {
+            display: flex;
+            background: #f1f5f9;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .modal-tab {
+            padding: 10px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748b;
+        }
+        .modal-tab.active {
+            background: white;
+            color: #06c755;
+            border-bottom: 2px solid #06c755;
+        }
+        .modal-content-area {
+            padding: 16px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .form-group {
+            margin-bottom: 14px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 4px;
+            color: #475569;
+        }
+        .form-control {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .radio-group {
+            display: flex;
+            gap: 16px;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+        .radio-group label {
+            font-weight: normal;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .ai-result-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 13px;
+            white-space: pre-wrap;
+            line-height: 1.5;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        .history-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+        .history-card-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .history-card-title { font-weight: bold; font-size: 13px; }
+        .history-card-date { font-size: 11px; color: #94a3b8; }
+        .history-card-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        .drop-zone-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(6, 199, 85, 0.85);
+            color: white;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 300;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>メッセージデータ統合解析ビューアー</h1>
-        <button class="btn btn-outline" id="btnDemo">デモデータを表示</button>
+        <h1>LINE トーク履歴マルチビューア & AI分析</h1>
+        <div class="header-btns">
+            <label class="btn">
+                📂 ファイルを開く
+                <input type="file" id="file-input" multiple accept=".txt" hidden>
+            </label>
+            <button onclick="openAiModal()">🤖 AI分析</button>
+        </div>
     </header>
 
-    <!-- ファイル選択エリア -->
-    <div class="drop-zone" id="dropZone">
-        <p style="font-weight: 600; margin-bottom: 8px;">JSONファイルをドラッグ＆ドロップ</p>
-        <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 16px;">またはファイルを選択してください</p>
-        <input type="file" id="fileInput" accept=".json" class="hidden">
-        <button class="btn" onclick="document.getElementById('fileInput').click()">ファイルを選択</button>
+    <div class="app-container" id="app-container">
+        <div class="drop-zone-overlay" id="drop-zone">ここにLINEの.txtファイルをドロップしてください</div>
+
+        <!-- サイドバー -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <span>トークルーム一覧</span>
+                <button class="btn-small btn-secondary" onclick="clearAllRooms()">クリア</button>
+            </div>
+            <div class="room-list" id="room-list">
+                <div style="padding:20px; color:#94a3b8; font-size:12px; text-align:center;">
+                    `.txt` ファイルを読み込むか、ここにドラッグ＆ドロップしてください
+                </div>
+            </div>
+        </div>
+
+        <!-- メインチャットエリア -->
+        <div class="main-content">
+            <div class="chat-header">
+                <span id="chat-title">トークを選択してください</span>
+                <div class="search-bar">
+                    🔍 <input type="text" id="search-input" placeholder="メッセージ内検索..." oninput="filterMessages()">
+                </div>
+            </div>
+            <div class="chat-messages" id="chat-messages">
+                <div class="empty-state">
+                    <p>LINEからエクスポートした `.txt` ファイルを読み込むと、会話が表示されます。</p>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- 解析結果エリア -->
-    <div id="analyticsWrapper" class="hidden">
-        <!-- KPIカード -->
-        <div class="dashboard-grid">
-            <div class="card">
-                <div class="card-title">総メッセージ数</div>
-                <div class="card-value" id="statTotalMsgs">0</div>
-                <div class="card-subtext" id="statAvgPerDay">1日あたり: 0件</div>
+    <!-- AI分析モーダル -->
+    <div class="modal-overlay" id="ai-modal">
+        <div class="modal-body">
+            <div class="modal-header">
+                <span>🤖 Gemini AI 会話分析</span>
+                <button class="btn-small btn-secondary" onclick="closeAiModal()">✕</button>
             </div>
-            <div class="card">
-                <div class="card-title">アクティブ期間</div>
-                <div class="card-value" id="statActiveDays">0 日</div>
-                <div class="card-subtext" id="statDateRange">-</div>
+            <div class="modal-tabs">
+                <div class="modal-tab active" id="tab-btn-run" onclick="switchAiTab('run')">分析の実行</div>
+                <div class="modal-tab" id="tab-btn-history" onclick="switchAiTab('history')">分析履歴 (<span id="ai-history-count">0</span>)</div>
             </div>
-            <div class="card">
-                <div class="card-title">最多発言者</div>
-                <div class="card-value" id="statTopSender">-</div>
-                <div class="card-subtext" id="statTopSenderCount">0 件</div>
+
+            <div class="modal-content-area">
+                <!-- 分析実行タブ -->
+                <div id="ai-tab-run">
+                    <div class="form-group">
+                        <label>Google Gemini API Key</label>
+                        <input type="password" id="ai-api-key" class="form-control" placeholder="APIキーを入力 (AI Studioで発行)">
+                    </div>
+
+                    <div style="display:flex; gap:10px;">
+                        <div class="form-group" style="flex:1;">
+                            <label>使用モデル</label>
+                            <select id="ai-model-select" class="form-control">
+                                <option value="gemini-2.5-flash">Gemini 2.5 Flash (推奨・高速)</option>
+                                <option value="gemini-2.5-pro">Gemini 2.5 Pro (高度な推論)</option>
+                                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label>件数制限</label>
+                            <select id="ai-limit-select" class="form-control">
+                                <option value="200">直近 200 件</option>
+                                <option value="500">直近 500 件</option>
+                                <option value="1000">直近 1000 件</option>
+                                <option value="all">全件</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>対象トークルーム</label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="ai-target-room" value="current" checked> 現在選択中のみ</label>
+                            <label><input type="radio" name="ai-target-room" value="all"> 全てのトークルーム</label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>分析タイプ / プロンプト設定</label>
+                        <select id="ai-prompt-type" class="form-control" onchange="toggleCustomPromptInput()">
+                            <option value="summary">📝 要約・決定事項の抽出</option>
+                            <option value="emotion">💖 感情・関係性・雰囲気分析</option>
+                            <option value="todo">🔍 課題・タスク・ToDo抽出</option>
+                            <option value="custom">✏️ カスタムプロンプト入力</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="custom-prompt-group" style="display:none;">
+                        <label>カスタム指示内容</label>
+                        <textarea id="ai-custom-prompt" class="form-control" rows="3" placeholder="例: この会話での主要な議論点と、それぞれの参加者の立ち位置をまとめてください。"></textarea>
+                    </div>
+
+                    <div style="display:flex; gap:8px; margin-bottom:14px;">
+                        <button class="btn-primary" onclick="runAiAnalysis()">🚀 分析を実行</button>
+                        <button class="btn-secondary" onclick="copyAiPromptToClipboard()">📋 プロンプトをコピー</button>
+                    </div>
+
+                    <div id="ai-result-container" style="display:none;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <label style="font-size:12px; font-weight:bold;">分析結果</label>
+                            <button class="btn-small btn-secondary" onclick="downloadCurrentAiResult()">📥 結果を保存</button>
+                        </div>
+                        <div class="ai-result-box" id="ai-result-box"></div>
+                    </div>
+                </div>
+
+                <!-- 履歴タブ -->
+                <div id="ai-tab-history" style="display:none;">
+                    <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+                        <button class="btn-small btn-danger" onclick="clearAllHistory()">🧹 履歴を全削除</button>
+                    </div>
+                    <div id="ai-history-list"></div>
+                </div>
             </div>
         </div>
-
-        <!-- グラフ分析 -->
-        <div class="analytics-section">
-            <!-- 発言者シェア -->
-            <div class="card">
-                <div class="card-title">送信者割合</div>
-                <ul class="sender-list" id="senderList"></ul>
-            </div>
-            <!-- 時間帯アクティビティ -->
-            <div class="card">
-                <div class="card-title">時間帯別アクティビティ (24時間)</div>
-                <div class="chart-container" id="hourlyChart"></div>
-            </div>
-        </div>
-
-        <!-- 検索・フィルター -->
-        <div class="filter-bar">
-            <input type="search" id="searchInput" placeholder="メッセージ本文を検索...">
-            <select id="senderFilter"><option value="">すべての送信者</option></select>
-        </div>
-
-        <!-- チャットログ -->
-        <div class="chat-container" id="chatContainer"></div>
     </div>
 
     <script>
-        const COCOA_OFFSET_SEC = 978307200;
-        let globalRawData = [];
+        let talkRooms = [];
+        let currentRoomId = null;
+        let aiHistory = [];
+        let latestAiResultText = '';
 
-        // DOM要素
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-        const analyticsWrapper = document.getElementById('analyticsWrapper');
-        const searchInput = document.getElementById('searchInput');
-        const senderFilter = document.getElementById('senderFilter');
-
-        // イベント設定
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('dragover');
-            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAiHistoryFromStorage();
+            document.getElementById('file-input').addEventListener('change', handleFileUpload);
+            setupDragAndDrop();
         });
-        fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
-        document.getElementById('btnDemo').addEventListener('click', loadDemoData);
-        searchInput.addEventListener('input', filterAndRenderChat);
-        senderFilter.addEventListener('change', filterAndRenderChat);
 
-        // ファイル読み込み
-        function handleFile(file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const json = JSON.parse(e.target.result);
-                    processData(Array.isArray(json) ? json : (json.messages || []));
-                } catch (err) {
-                    alert('JSONファイルの読み込みに失敗しました。形式を確認してください。');
+        /* ドラッグ＆ドロップ対応 */
+        function setupDragAndDrop() {
+            const container = document.getElementById('app-container');
+            const dropZone = document.getElementById('drop-zone');
+
+            window.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.style.display = 'flex';
+            });
+
+            dropZone.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dropZone.style.display = 'none';
+            });
+
+            window.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.style.display = 'none';
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    processFiles(e.dataTransfer.files);
                 }
-            };
-            reader.readAsText(file);
+            });
         }
 
-        // データ処理 & 解析呼び出し
-        function processData(messages) {
-            globalRawData = messages.map(m => ({
-                sender: m.sender || m.user || m.from || 'Unknown',
-                text: m.text || m.message || m.body || '',
-                date: parseTimestamp(m.timestamp || m.date || m.time)
-            })).sort((a, b) => a.date - b.date);
+        function handleFileUpload(e) {
+            processFiles(e.target.files);
+        }
 
-            if (globalRawData.length === 0) {
-                alert('解析可能なメッセージデータが見つかりませんでした。');
+        function processFiles(files) {
+            if (!files || files.length === 0) return;
+            Array.from(files).forEach(file => {
+                if (!file.name.endsWith('.txt')) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => parseLineText(evt.target.result, file.name);
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+
+        /* LINE テキスト解析 (複数日付・マルチライン対応) */
+        function parseLineText(text, fileName) {
+            const lines = text.split(/\r?\n/);
+            let roomName = fileName.replace(/^\[LINE\]\s*/, '').replace(/\.txt$/, '');
+            let messages = [];
+            let currentDateStr = '';
+            let lastMessage = null;
+
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i].trim();
+                if (!line) continue;
+
+                // 日法ヘッダー判定 (例: 2024/05/12(日), 2024.05.12, 2024年5月12日)
+                const dateMatch = line.match(/^(\d{4}[\/\.\-]\d{1,2}[\/\.\-]\d{1,2})/);
+                if (dateMatch && (line.includes('年') || line.includes('/') || line.includes('.'))) {
+                    currentDateStr = dateMatch[1];
+                    continue;
+                }
+
+                // タブ区切りメッセージ (時間\t送信者\t本文)
+                const parts = line.split('\t');
+                if (parts.length >= 3 && /^\d{1,2}:\d{2}$/.test(parts[0].trim())) {
+                    const timeStr = parts[0].trim();
+                    const sender = parts[1].trim();
+                    const msgText = parts.slice(2).join('\t').trim();
+
+                    const parsedDate = parseTimestamp(currentDateStr, timeStr);
+
+                    lastMessage = {
+                        sender: sender,
+                        time: timeStr,
+                        timestamp: parsedDate,
+                        text: msgText
+                    };
+                    messages.push(lastMessage);
+                } else if (lastMessage && !line.startsWith('[')) {
+                    // 改行された複数行本文の結合
+                    lastMessage.text += '\n' + line;
+                }
+            }
+
+            if (messages.length > 0) {
+                const roomId = Date.now() + Math.random();
+                talkRooms.push({ id: roomId, name: roomName, messages: messages });
+                renderRoomList();
+                if (!currentRoomId) selectRoom(roomId);
+            }
+        }
+
+        function renderRoomList() {
+            const listEl = document.getElementById('room-list');
+            listEl.innerHTML = '';
+            if (talkRooms.length === 0) {
+                listEl.innerHTML = '<div style="padding:20px; color:#94a3b8; font-size:12px; text-align:center;">`.txt` ファイルを読み込んでください</div>';
                 return;
             }
 
-            analyticsWrapper.classList.remove('hidden');
-            renderAnalytics(globalRawData);
-            populateSenderFilter(globalRawData);
-            filterAndRenderChat();
+            talkRooms.forEach(room => {
+                const item = document.createElement('div');
+                item.className = `room-item ${room.id === currentRoomId ? 'active' : ''}`;
+                item.onclick = () => selectRoom(room.id);
+                item.innerHTML = `
+                    <span class="room-name">${escapeHtml(room.name)}</span>
+                    <span class="room-count">${room.messages.length}件</span>
+                `;
+                listEl.appendChild(item);
+            });
         }
 
-        // データ解析＆ダッシュボード描画
-        function renderAnalytics(data) {
-            const total = data.length;
-            const senderCounts = {};
-            const hourlyCounts = new Array(24).fill(0);
-
-            data.forEach(m => {
-                senderCounts[m.sender] = (senderCounts[m.sender] || 0) + 1;
-                hourlyCounts[m.date.getHours()]++;
-            });
-
-            // 期間計算
-            const firstDate = data[0].date;
-            const lastDate = data[data.length - 1].date;
-            const diffTime = Math.abs(lastDate - firstDate);
-            const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-
-            // KPI更新
-            document.getElementById('statTotalMsgs').textContent = total.toLocaleString();
-            document.getElementById('statAvgPerDay').textContent = `1日あたり: ${(total / diffDays).toFixed(1)}件`;
-            document.getElementById('statActiveDays').textContent = `${diffDays} 日間`;
-            document.getElementById('statDateRange').textContent = `${formatDate(firstDate)} ~ ${formatDate(lastDate)}`;
-
-            // Top送信者
-            const sortedSenders = Object.entries(senderCounts).sort((a, b) => b[1] - a[1]);
-            document.getElementById('statTopSender').textContent = sortedSenders[0][0];
-            document.getElementById('statTopSenderCount').textContent = `${sortedSenders[0][1].toLocaleString()} 件`;
-
-            // プログレスバー（送信者）描画
-            const senderListEl = document.getElementById('senderList');
-            senderListEl.innerHTML = sortedSenders.slice(0, 5).map(([sender, count]) => {
-                const pct = ((count / total) * 100).toFixed(1);
-                return `
-                    <li class="sender-item">
-                        <div class="sender-info">
-                            <span>${escapeHtml(sender)}</span>
-                            <span><b>${count}</b> (${pct}%)</span>
-                        </div>
-                        <div class="progress-bar-bg">
-                            <div class="progress-bar-fill" style="width: ${pct}%"></div>
-                        </div>
-                    </li>`;
-            }).join('');
-
-            // 時間帯アクティビティグラフ描画
-            const maxHourly = Math.max(...hourlyCounts) || 1;
-            const chartEl = document.getElementById('hourlyChart');
-            chartEl.innerHTML = hourlyCounts.map((count, hour) => {
-                const heightPct = (count / maxHourly) * 100;
-                return `
-                    <div class="bar-wrapper" title="${hour}時: ${count}件">
-                        <div class="bar" style="height: ${heightPct}%"></div>
-                        <span class="bar-label">${hour}</span>
-                    </div>`;
-            }).join('');
+        function clearAllRooms() {
+            talkRooms = [];
+            currentRoomId = null;
+            renderRoomList();
+            document.getElementById('chat-title').innerText = 'トークを選択してください';
+            document.getElementById('chat-messages').innerHTML = '<div class="empty-state"><p>ファイルが読み込まれていません。</p></div>';
         }
 
-        // フィルター適用とチャット描画
-        function filterAndRenderChat() {
-            const keyword = searchInput.value.toLowerCase();
-            const selectedSender = senderFilter.value;
+        function selectRoom(id) {
+            currentRoomId = id;
+            renderRoomList();
+            filterMessages();
+        }
 
-            const filtered = globalRawData.filter(m => {
-                const matchKeyword = !keyword || m.text.toLowerCase().includes(keyword);
-                const matchSender = !selectedSender || m.sender === selectedSender;
-                return matchKeyword && matchSender;
-            });
+        function filterMessages() {
+            const room = talkRooms.find(r => r.id === currentRoomId);
+            const messagesContainer = document.getElementById('chat-messages');
+            messagesContainer.innerHTML = '';
 
-            const chatEl = document.getElementById('chatContainer');
-            chatEl.innerHTML = '';
+            if (!room) return;
+
+            document.getElementById('chat-title').innerText = room.name;
+            const query = document.getElementById('search-input').value.toLowerCase().trim();
+
+            let filtered = room.messages;
+            if (query) {
+                filtered = room.messages.filter(m => m.text.toLowerCase().includes(query) || m.sender.toLowerCase().includes(query));
+            }
 
             let lastDateStr = '';
-            filtered.forEach(m => {
-                const dateStr = formatDateHeader(m.date);
+            filtered.forEach(msg => {
+                const dateStr = formatDateHeader(msg.timestamp);
                 if (dateStr !== lastDateStr) {
-                    chatEl.innerHTML += `<div class="date-divider"><span class="date-label">${dateStr}</span></div>`;
+                    const dateDiv = document.createElement('div');
+                    dateDiv.className = 'date-divider';
+                    dateDiv.innerHTML = `<span>${escapeHtml(dateStr)}</span>`;
+                    messagesContainer.appendChild(dateDiv);
                     lastDateStr = dateStr;
                 }
 
-                chatEl.innerHTML += `
-                    <div class="msg-bubble">
-                        <div class="msg-header">
-                            <span class="msg-sender">${escapeHtml(m.sender)}</span>
-                            <span class="msg-time">${formatTime(m.date)}</span>
-                        </div>
-                        <div class="msg-content">${escapeHtml(m.text)}</div>
-                    </div>`;
+                const row = document.createElement('div');
+                const isMe = msg.sender === '自分' || msg.sender === 'Me';
+                row.className = `msg-row ${isMe ? 'me' : 'other'}`;
+                row.innerHTML = `
+                    ${!isMe ? `<div class="msg-sender">${escapeHtml(msg.sender)}</div>` : ''}
+                    <div class="msg-bubble-wrap">
+                        <div class="msg-bubble">${escapeHtml(msg.text)}</div>
+                        <div class="msg-time">${formatTime(msg.timestamp)}</div>
+                    </div>
+                `;
+                messagesContainer.appendChild(row);
+            });
+
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        /* AI モーダル関連 */
+        function openAiModal() {
+            if (talkRooms.length === 0) {
+                alert('トーク履歴ファイルを読み込んでからAI分析を開いてください。');
+                return;
+            }
+            document.getElementById('ai-modal').style.display = 'flex';
+            renderAiHistoryList();
+        }
+
+        function closeAiModal() {
+            document.getElementById('ai-modal').style.display = 'none';
+        }
+
+        function switchAiTab(tab) {
+            document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(`tab-btn-${tab}`).classList.add('active');
+            document.getElementById('ai-tab-run').style.display = tab === 'run' ? 'block' : 'none';
+            document.getElementById('ai-tab-history').style.display = tab === 'history' ? 'block' : 'none';
+        }
+
+        function toggleCustomPromptInput() {
+            const val = document.getElementById('ai-prompt-type').value;
+            document.getElementById('custom-prompt-group').style.display = val === 'custom' ? 'block' : 'none';
+        }
+
+        async function buildFullPrompt() {
+            const promptType = document.getElementById('ai-prompt-type').value;
+            const customPrompt = document.getElementById('ai-custom-prompt').value.trim();
+            const targetScope = document.querySelector('input[name="ai-target-room"]:checked').value;
+            const limitVal = document.getElementById('ai-limit-select').value;
+
+            let targetRooms = [];
+            if (targetScope === 'current') {
+                const currentRoom = talkRooms.find(r => r.id === currentRoomId);
+                if (currentRoom) targetRooms = [currentRoom];
+            } else {
+                targetRooms = talkRooms;
+            }
+
+            let promptText = "";
+            if (promptType === 'summary') {
+                promptText = "以下のLINE会話ログの要約、主要な話題、決定事項を分かりやすく箇条書きで整理して抽出してください。\n\n";
+            } else if (promptType === 'emotion') {
+                promptText = "以下の会話から、各発言者の感情の変化、関係性、雰囲気（良好、緊張など）を詳細に分析してください。\n\n";
+            } else if (promptType === 'todo') {
+                promptText = "以下の会話から、未完了の課題、タスク、ToDo、次回のアクションアイテムを整理してリスト化してください。\n\n";
+            } else if (promptType === 'custom' && customPrompt) {
+                promptText = `${customPrompt}\n\n`;
+            } else {
+                promptText = "以下のLINE会話データに基づいて詳細な分析を行ってください。\n\n";
+            }
+
+            targetRooms.forEach(r => {
+                promptText += `--- トークルーム: ${r.name} ---\n`;
+                let msgs = r.messages;
+                if (limitVal !== 'all') {
+                    const limit = parseInt(limitVal, 10);
+                    msgs = msgs.slice(-limit);
+                }
+                msgs.forEach(m => {
+                    promptText += `[${formatDate(m.timestamp)} ${formatTime(m.timestamp)}] ${m.sender}: ${m.text.replace(/\n/g, ' ')}\n`;
+                });
+                promptText += "\n";
+            });
+
+            const targetTitle = targetRooms.map(r => r.name).join(', ');
+            return { fullPrompt: promptText, targetTitle: targetTitle, targetRooms: targetRooms };
+        }
+
+        async function copyAiPromptToClipboard() {
+            try {
+                const promptObj = await buildFullPrompt();
+                await navigator.clipboard.writeText(promptObj.fullPrompt);
+                alert('AI分析プロンプトをクリップボードにコピーしました！');
+            } catch (e) {
+                alert('コピーに失敗しました: ' + e.message);
+            }
+        }
+
+        async function runAiAnalysis() {
+            const apiKey = document.getElementById('ai-api-key').value.trim();
+            const model = document.getElementById('ai-model-select').value || 'gemini-2.5-flash';
+
+            if (!apiKey) {
+                alert('Google Gemini APIキーを入力し、認証を確認してください。');
+                return;
+            }
+
+            const resultBox = document.getElementById('ai-result-box');
+            const resultContainer = document.getElementById('ai-result-container');
+            resultContainer.style.display = 'block';
+            resultBox.innerText = '🤖 AIが会話データを分析中... しばらくお待ちください。';
+
+            try {
+                const promptObj = await buildFullPrompt();
+                if (!promptObj.fullPrompt) {
+                    resultBox.innerText = '❌ 分析対象のメッセージが見つかりませんでした。';
+                    return;
+                }
+
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: promptObj.fullPrompt }] }]
+                    })
+                });
+
+                if (!response.ok) {
+                    const errJson = await response.json().catch(() => ({}));
+                    throw new Error(errJson.error?.message || `HTTPエラー ${response.status}`);
+                }
+
+                const data = await response.json();
+                const textResult = data.candidates?.[0]?.content?.parts?.[0]?.text || '分析結果を取得できませんでした。';
+
+                latestAiResultText = textResult;
+                resultBox.innerText = textResult;
+
+                const historyItem = {
+                    id: Date.now(),
+                    date: new Date().toLocaleString('ja-JP'),
+                    title: promptObj.targetTitle,
+                    promptType: document.getElementById('ai-prompt-type').value,
+                    model: model,
+                    result: textResult
+                };
+
+                aiHistory.unshift(historyItem);
+                saveAiHistoryToStorage();
+                updateAiHistoryCount();
+
+            } catch (err) {
+                resultBox.innerText = `❌ エラーが発生しました:\n${err.message}`;
+            }
+        }
+
+        function downloadCurrentAiResult() {
+            if (!latestAiResultText) {
+                alert('保存するAI分析結果がありません。');
+                return;
+            }
+            const blob = new Blob([latestAiResultText], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `LINE_AI_Analysis_${Date.now()}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        /* 履歴管理 (localStorage) */
+        function loadAiHistoryFromStorage() {
+            try {
+                const saved = localStorage.getItem('line_ai_history');
+                if (saved) {
+                    aiHistory = JSON.parse(saved);
+                }
+            } catch (e) {
+                aiHistory = [];
+            }
+            updateAiHistoryCount();
+        }
+
+        function saveAiHistoryToStorage() {
+            try {
+                localStorage.setItem('line_ai_history', JSON.stringify(aiHistory.slice(0, 50)));
+            } catch (e) {}
+        }
+
+        function updateAiHistoryCount() {
+            const countEl = document.getElementById('ai-history-count');
+            if (countEl) countEl.innerText = aiHistory.length;
+        }
+
+        function renderAiHistoryList() {
+            const container = document.getElementById('ai-history-list');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (aiHistory.length === 0) {
+                container.innerHTML = '<div style="padding:20px; text-align:center; color:#64748b; font-size:13px;">保存された分析履歴はありません。</div>';
+                return;
+            }
+
+            aiHistory.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'history-card';
+                card.innerHTML = `
+                    <div class="history-card-header">
+                        <span class="history-card-title">📌 ${escapeHtml(item.title)}</span>
+                        <span class="history-card-date">${escapeHtml(item.date)}</span>
+                    </div>
+                    <div style="font-size:11px; color:#64748b; margin-bottom:6px;">使用モデル: ${escapeHtml(item.model || 'Gemini')}</div>
+                    <div class="ai-result-box" style="max-height:120px;">${escapeHtml(item.result)}</div>
+                    <div class="history-card-actions">
+                        <button class="btn-small btn-primary" onclick="loadHistoryToMain(${item.id})">💬 結果を表示</button>
+                        <button class="btn-small btn-danger" onclick="deleteHistoryItem(${item.id})">🗑 削除</button>
+                    </div>
+                `;
+                container.appendChild(card);
             });
         }
 
-        function populateSenderFilter(data) {
-            const senders = [...new Set(data.map(m => m.sender))];
-            senderFilter.innerHTML = '<option value="">すべての送信者</option>' + 
-                senders.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+        function loadHistoryToMain(id) {
+            const item = aiHistory.find(h => h.id === id);
+            if (!item) return;
+            latestAiResultText = item.result;
+            switchAiTab('run');
+            document.getElementById('ai-result-container').style.display = 'block';
+            document.getElementById('ai-result-box').innerText = item.result;
         }
 
-        // ユーティリティ関数
-        function parseTimestamp(val) {
-            if (!val) return new Date();
-            if (val instanceof Date) return val;
-            if (typeof val === 'string') {
-                const num = Number(val);
-                if (!isNaN(num)) val = num;
-                else {
-                    const d = new Date(val);
-                    if (!isNaN(d.getTime())) return d;
-                }
-            }
-            if (typeof val === 'number') {
-                if (val > 1e16) val = Math.floor(val / 1000000); // ナノ秒
-                else if (val > 1e13) val = Math.floor(val / 1000); // マイクロ秒
-
-                if (val > 1e11) return new Date(val); // Unix ms
-
-                if (val > 1e8 && val < 1e10) {
-                    if (val < 1e9) return new Date((val + COCOA_OFFSET_SEC) * 1000); // Cocoa sec
-                    else return new Date(val * 1000); // Unix sec
-                }
-
-                if (val > 1e10 && val <= 1e11) {
-                    return new Date(val + (COCOA_OFFSET_SEC * 1000)); // Cocoa ms
-                }
-                return new Date(val);
-            }
-            return new Date();
+        function deleteHistoryItem(id) {
+            aiHistory = aiHistory.filter(h => h.id !== id);
+            saveAiHistoryToStorage();
+            updateAiHistoryCount();
+            renderAiHistoryList();
         }
 
-        function formatDate(d) {
-            return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+        function clearAllHistory() {
+            if (!confirm('すべての分析履歴を削除してもよろしいですか？')) return;
+            aiHistory = [];
+            saveAiHistoryToStorage();
+            updateAiHistoryCount();
+            renderAiHistoryList();
         }
 
-        function formatDateHeader(d) {
-            const days = ['日', '月', '火', '水', '木', '金', '土'];
-            return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${days[d.getDay()]})`;
-        }
-
-        function formatTime(d) {
-            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-        }
-
+        /* ユーティリティ関数 */
         function escapeHtml(str) {
-            if (!str) return '';
+            if (str === null || str === undefined) return '';
             return String(str)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
@@ -562,28 +905,44 @@
                 .replace(/'/g, '&#039;');
         }
 
-        // デモ用サンプルデータ生成
-        function loadDemoData() {
-            const senders = ['Alice', 'Bob', 'Charlie'];
-            const sampleTexts = [
-                'お疲れ様です！進捗いかがでしょうか？',
-                '資料のレビュー完了しました。問題なさそうです。',
-                'ありがとうございます！修正版を後ほど共有します。',
-                '了解しました。明日打ち合わせしましょう。',
-                'よろしくお願いいたします！'
-            ];
-            const demo = [];
-            const now = Date.now();
+        function parseTimestamp(dateStr, timeStr) {
+            if (!timeStr) return new Date();
+            let cleanDate = dateStr ? dateStr.replace(/[\(\（].*?[\)\）]/g, '').trim() : '';
+            cleanDate = cleanDate.replace(/[\.\年\月]/g, '/').replace(/日/g, '');
+            let fullStr = `${cleanDate} ${timeStr}`.trim();
+            let d = new Date(fullStr);
+            if (!isNaN(d.getTime())) return d;
 
-            for (let i = 0; i < 60; i++) {
-                const randomHoursAgo = Math.floor(Math.random() * 120);
-                demo.push({
-                    sender: senders[Math.floor(Math.random() * senders.length)],
-                    text: sampleTexts[Math.floor(Math.random() * sampleTexts.length)],
-                    timestamp: now - (randomHoursAgo * 3600 * 1000) - (Math.random() * 1800 * 1000)
-                });
+            let num = Number(timeStr);
+            if (!isNaN(num)) {
+                if (num < 1000000000) return new Date((num + 978307200) * 1000); // Cocoa Core Data (2001 epoch)
+                if (num < 2000000000) return new Date(num * 1000);
+                if (num < 2000000000000) return new Date(num);
+                if (num > 1e14) return new Date(Math.floor(num / 1000));
             }
-            processData(demo);
+            return new Date();
+        }
+
+        function formatDate(d) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}/${m}/${day}`;
+        }
+
+        function formatDateHeader(d) {
+            const weeks = ['日', '月', '火', '水', '木', '金', '土'];
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            const day = d.getDate();
+            const w = weeks[d.getDay()];
+            return `${y}年${m}月${day}日(${w})`;
+        }
+
+        function formatTime(d) {
+            const h = String(d.getHours()).padStart(2, '0');
+            const m = String(d.getMinutes()).padStart(2, '0');
+            return `${h}:${m}`;
         }
     </script>
 </body>
